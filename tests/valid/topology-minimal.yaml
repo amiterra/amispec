@@ -1,0 +1,59 @@
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: demo-blog
+  organization: example-org
+  gitMode: managed-embedded
+externalResources:
+  - id: backups-s3
+    passport: external-s3-compatible
+    role: backup-vault
+    endpointFqdn: s3.example.com
+    bucket: demo-backups
+    secretRef: sops://secrets/s3.enc.yaml
+clusters:
+  - id: local
+    name: Demo Cluster
+    domain: example.local
+    security:
+      sopsRecipients:
+        - age1examplepublickey00000000000000000000000000000000000000
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1
+      kubeProxyReplacement: true
+    nodes:
+      - id: node-1
+        role: control-plane-worker
+        pricingTier: micro-vps
+        hardware:
+          arch: amd64
+          cpuCores: 4
+          memoryMb: 8192
+          disks:
+            - { name: nvme0n1, tier: nvme-local, sizeGb: 100 }
+    loadBalancers:
+      - id: main-l7
+        layer: l7-gateway
+        provider: cilium-envoy
+    components:
+      - id: web
+        passport: stateless-app
+        version: 1.0.0
+        passportRev: 1
+        workloadOverride:
+          image: ghcr.io/example/blog-web:1.0.0
+        topology: { mode: standalone, replicas: 1 }
+        resources: { cpuCores: 1, memoryMb: 512 }
+        expose:
+          - { endpoint: web, viaBalancer: main-l7, scope: public }
+      - id: db
+        passport: postgresql
+        version: 18.0.0
+        passportRev: 6
+        topology: { mode: standalone }
+        resources: { cpuCores: 2, memoryMb: 2048 }
+        storage: { sizeGb: 20, mediaTier: nvme-local }
+        backupTarget: backups-s3
+    bindings:
+      - { from: web, to: db, toSlot: sql-cluster, asRequirement: database }

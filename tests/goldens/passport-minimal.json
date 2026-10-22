@@ -1,0 +1,95 @@
+{
+    "apiVersion": "catalog.amispec.io/v1",
+    "kind": "ComponentPassport",
+    "metadata": {
+        "id": "demo-worker",
+        "name": "Demo Queue Worker",
+        "version": "1.0.0",
+        "passportRev": 1,
+        "category": "application",
+        "archetype": "stateless-app",
+        "distribution": {
+            "tier": "open-core",
+            "license": "Apache-2.0"
+        },
+        "canvasUI": {
+            "icon": "worker-gear",
+            "accentColor": "#2563EB",
+            "nodeShape": "standard-card"
+        }
+    },
+    "topologyModes": {
+        "standalone": {
+            "description": "1 replica without HA",
+            "minNodes": 1,
+            "replicas": 1,
+            "scaleDownPolicy": "immediate",
+            "disruptionBudget": {
+                "maxUnavailable": 1,
+                "updateStrategy": "rolling"
+            },
+            "podAntiAffinity": "soft"
+        }
+    },
+    "workload": {
+        "engine": "k8s-deployment",
+        "allowWorkloadOverride": false,
+        "priorityClass": "background-batch",
+        "container": {
+            "image": "ghcr.io/example/demo-worker:1.0.0",
+            "pullSecretRequired": false,
+            "readOnlyRootFilesystem": true,
+            "zeroEndpoints": false
+        },
+        "probes": {
+            "liveness": {
+                "type": "exec",
+                "command": [
+                    "pgrep",
+                    "-f",
+                    "worker"
+                ],
+                "localProcessOnly": true,
+                "failureThreshold": 3,
+                "periodSeconds": 10,
+                "timeoutSeconds": 3
+            }
+        }
+    },
+    "interfaces": {
+        "egressDefaultMode": "graph-only",
+        "endpoints": [],
+        "provides": [],
+        "requires": {
+            "database": {
+                "capability": "postgres-sql",
+                "optional": false,
+                "multiBind": false,
+                "dependencyStage": "infrastructure-ready",
+                "envMapping": {
+                    "DATABASE_URL": "${exported.uri}"
+                }
+            }
+        }
+    },
+    "hardwareAndKernel": {
+        "resources": {
+            "supportedArchitectures": [
+                "amd64",
+                "arm64"
+            ],
+            "minCpuCores": 0.25,
+            "minMemoryMb": 128,
+            "recommendedMemoryMb": 512,
+            "ephemeralStorageMb": 2048,
+            "oomSafetyMarginPercent": 15,
+            "networkQosClass": "realtime-interactive",
+            "cpuLimitPolicy": "burstable-no-limit"
+        }
+    },
+    "operations": {
+        "observability": {
+            "scrapeInterval": "30s"
+        }
+    }
+}

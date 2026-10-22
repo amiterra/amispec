@@ -1,0 +1,9 @@
+apiVersion: topology.amispec.io/v1
+kind: CanvasLayout
+clusterId: prod-eu-central
+viewport: { x: 0, y: 0, zoom: 0.95 }
+groups:
+  billing-domain: { collapsed: false }
+positions:
+  django-core: { x: 200, y: 120 }
+  pg-main: { x: 680, y: 180 }

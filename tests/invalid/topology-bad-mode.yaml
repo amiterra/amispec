@@ -1,0 +1,34 @@
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: demo
+  organization: example
+  gitMode: managed-embedded
+clusters:
+  - id: local
+    name: Local
+    domain: example.local
+    security:
+      sopsRecipients:
+        - age1examplepublickey00000000000000000000000000000000000000
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1
+      kubeProxyReplacement: true
+    nodes:
+      - id: n1
+        role: control-plane-worker
+        pricingTier: micro-vps
+        hardware:
+          arch: amd64
+          cpuCores: 2
+          memoryMb: 4096
+          disks:
+            - { name: d0, tier: nvme-local, sizeGb: 50 }
+    components:
+      - id: db
+        passport: postgresql
+        version: 18.0.0
+        passportRev: 6
+        topology: { mode: multi-az }
+        resources: { cpuCores: 1, memoryMb: 512 }

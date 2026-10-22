@@ -1,0 +1,4690 @@
+= AmiSpec Specification and User Guide
+:doctype: book
+:toc: left
+:toclevels: 3
+:toc-title: Contents
+:icons: font
+:sectnums:
+:sectnumslevels: 3
+:source-highlighter: highlightjs
+:description: Public guide and specification of the open AmiSpec standard: component passports (ComponentPassport), cluster topologies (TopologyBlueprint), and their compilation into declarative manifests.
+:keywords: AmiSpec, ComponentPassport, TopologyBlueprint, CUE, CEL, GitOps, Kubernetes, infrastructure-as-code
+:docid: amispec-1.0
+:revnumber: 1.0.0
+:revdate: 2026-10-22
+:revremark: First public release of the AmiSpec specification and user guide
+:status: Stable Draft
+:doctitle-suffix: Version 1.0.0
+:license: Apache-2.0
+:spdx-license: Apache-2.0
+:edition: 1
+:editors: Evgenii Myzgin
+:keywords-bcp: The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
+
+[abstract]
+== Abstract
+
+AmiSpec is an open standard for declarative description of infrastructure topologies and software component passports. A *ComponentPassport* specifies a reusable class of services (availability modes, resource formulas, client sidecars, storage, backups, day-2 actions). A *TopologyBlueprint* specifies a concrete deployment (clusters, nodes, component instances, bindings, external resources). The pair compiles deterministically into a full declarative manifest tree for Kubernetes and GitOps.
+
+This document is both the normative specification of AmiSpec schemas and the layered user guide (getting started → practical patterns → reference). It is published under the Apache-2.0 license and intended for public use.
+
+[preface]
+== Status of This Document
+
+[cols="2,4", options="header"]
+|===
+| Attribute | Value
+
+| Document ID
+| `amispec-1.0`
+
+| Version
+| `1.0.0` (Edition 1)
+
+| Status
+| *Stable Draft* — technical content is complete and intended for implementation feedback; not yet a formal standards-body Recommendation
+
+| License
+| Apache-2.0 (SPDX: `Apache-2.0`)
+
+| Date
+| 2026-10-22
+
+| Editors
+| {editors} (editorial responsibility for this edition)
+
+| Change control
+| Schema changes are versioned; `passportRev` pins consumer deployments to passport rules. Errata and revision history are in <<revision-history>>.
+
+| Implementers
+| Implementations are invited. Report issues and errata via the project issue tracker. Machine-readable normative schemas are `schemas/component_passport.cue` and `schemas/topology_spec.cue`.
+|===
+
+This document is available in a single latest-version form. Readers MUST discover the current status from the published version pointer rather than from copies.
+
+[preface]
+== Conventions
+
+=== Requirement keywords (BCP 14)
+
+{keywords-bcp}
+
+Keywords appear only in *normative* text. Strive to use them sparingly — only where interoperation or protection from harm requires it. Descriptive clauses about schema fields are declarative; keywords are reserved for conformance obligations, invariants, and compilation rules.
+
+=== Normative and informative content
+
+[cols="2,4", options="header"]
+|===
+| Class | Parts of this document
+
+| *Normative*
+| <<scope>>, <<normative-refs>>, <<terms>>, <<conformance>>, the CUE meta-schemas in <<schema-passport>> and <<schema-topology>>, the twelve invariants, the compiler invariants, and field/type/enum definitions where stated as requirements.
+
+| *Informative*
+| How to read this guide, motivation, Part I and Part II (tutorials and worked examples), scenario catalogs, checklists, diagrams, notes, examples, and the expanded glossary. Figures, examples and notes are always informative.
+|===
+
+If any section is informative, it is introduced as such or uses only declarative language without BCP 14 keywords.
+
+== Scope
+[[scope]]
+
+This document specifies the *AmiSpec* standard for describing:
+
+. *Component passports* (`ComponentPassport`, `catalog.amispec.io/v1`) — reusable descriptions of service classes: availability modes, workload engines, resource and kernel formulas, network slots, client-sidecar contracts (`clientContract`), storage, backup, live migration, observability and day-2 actions.
+. *Topology blueprints* (`TopologyBlueprint`, `topology.amispec.io/v1`) — concrete deployments: clusters, nodes, load balancers, security zones, component instances, bindings, external resources, multi-cluster links.
+. *Compilation model* — deterministic projection from the pair (passport + topology) into a staged declarative manifest tree (Kubernetes + GitOps), including provenance metadata for reverse decompilation.
+
+*In scope:* schema structure and field semantics; typologies of availability modes; binding and client-connection contracts; resource/disk/kernel arbitration rules; multi-cluster relations; security zones; modular project layout; formula language usage (CEL); conformance criteria for passports, topologies, and compilers.
+
+*Out of scope:* concrete product UIs, commercial hosting offerings, specific cloud-provider billing, and any vendor-portal implementation. Reference tooling names (`ami compile`, `ami decompile`, `ami import-k8s`) illustrate the model and are not themselves normative API surface beyond the data contracts defined here.
+
+== Normative References
+[[normative-refs]]
+
+The following documents are referred to in the text in such a way that some or all of their content constitutes requirements of this document. For dated references, only the edition cited applies. For undated references, the latest edition of the referenced document applies.
+
+[cols="2,4", options="header"]
+|===
+| Reference | Title
+
+| [BCP14]
+| Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997; Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
+
+| [ISO8601]
+| ISO 8601, Data elements and interchange formats — Information interchange — Representation of dates and times.
+
+| [RFC3339]
+| Klyne, G. and C. Newman, "Date and Time on the Internet: Timestamps", RFC 3339, July 2002.
+
+| [CUE]
+| The CUE language specification and module reference (cue-lang.org).
+
+| [CEL]
+| Common Expression Language (CEL) specification (github.com/google/cel-spec).
+
+| [K8s-API]
+| Kubernetes API Conventions and current API reference (kubernetes.io/docs/reference/).
+
+| [SemVer]
+| Semantic Versioning 2.0.0 (semver.org).
+|===
+
+If a provision of this document depends on a resource that is unavailable, that provision is inapplicable; the remainder of this document remains in force.
+
+== Terms and Definitions
+[[terms]]
+
+For the purposes of this document, the following terms and definitions apply. Definitions are declarative and do not themselves contain requirements.
+
+[cols="2,5", options="header"]
+|===
+| Term | Definition
+
+| *AmiSpec*
+| The open standard defined by this document for declarative description of component passports and infrastructure topologies.
+
+| *ComponentPassport*
+| A reusable description of a class of services, including availability modes, workload, interfaces, hardware and operations (API version `catalog.amispec.io/v1`).
+
+| *TopologyBlueprint*
+| A concrete deployment description: clusters, nodes, component instances, bindings and external resources (API version `topology.amispec.io/v1`).
+
+| *Passport revision* (`passportRev`)
+| Version of the passport *rules* (formulas, sidecars, quotas), independent of the software `version` of the component.
+
+| *Slot*
+| Named outbound capability of a provider (`provides[].slot`).
+
+| *Requirement*
+| Named inbound need of a consumer (`requires[<name>]`) and the mapping of exported tokens to environment or files.
+
+| *Binding*
+| Directed graph edge from a consumer to a provider slot, optionally carrying `envPrefix`, rotation epoch and delivery guarantees.
+
+| *clientContract*
+| Contract by which the *provider* passport dictates the local proxy sidecar injected into the consumer pod; the application connects to `127.0.0.1`.
+
+| *KEP-753 sidecar*
+| Native Kubernetes sidecar (`initContainers` with `restartPolicy: Always`): starts before the app, stops after it, terminates in Jobs.
+
+| *KEP-1287*
+| In-place update of Pod resources (cgroup v2) without container restart.
+
+| *Capacity model*
+| Component that validates node budgets (RAM, disk, isolation, surge envelope) before deploy.
+
+| *Node Readiness Gate*
+| Node label affirming that a kernel/system tuning profile has been applied successfully.
+
+| *Monotonic merge*
+| Algebraic merge of `sysctl`/`sysfs` profiles via `mergeStrategy` (`max` / `min` / `exclusive-match`).
+
+| *Mount flag (`#MountFlag`)*
+| Closed set of allowed Linux/CSI mount options for `lvmOptions.mountFlags` (default `noatime`, `nodiratime`). Dangerous flags (`suid`, `exec`, `dev`, `user`) are out of the set.
+
+| *Degraded HA*
+| Two-node availability mode with witness or cloud lease fencing.
+
+| *Expand / Contract*
+| Two-phase database schema migration: additive changes before rollout, destructive changes after.
+
+| *Transactional outbox*
+| Guaranteed event delivery via an outbox table and a relay sidecar.
+
+| *PITR*
+| Point-in-Time Recovery — restoration to a specified timestamp.
+
+| *Provenance metadata*
+| Labels and annotations on generated manifests that make compilation reversible.
+
+| *Reverse compilation*
+| Folding a Provenance-carrying manifest tree back into `TopologyBlueprint` (lossless Level A) or heuristic import of foreign manifests (Level B).
+
+| *Day-2 actions*
+| Declarative service operations (`day2Actions`) with allowlisted ids and roles.
+
+| *Fleet*
+| Group of homogeneous edge clusters (`fleetCount`).
+
+| *Cutover*
+| Transactional traffic switch during migration or disaster recovery.
+
+| *Normative*
+| Content that sets requirements for conformance.
+
+| *Informative*
+| Content provided for understanding; not required for conformance.
+|===
+
+NOTE: An expanded explanatory glossary with additional implementation vocabulary is provided in <<glossary>> (informative).
+
+== Conformance
+[[conformance]]
+
+Conformance to AmiSpec is defined for three artifact classes.
+
+=== Conforming passport
+
+A ComponentPassport document conforms when:
+
+. It validates against the CUE meta-schema `schemas/component_passport.cue` with no errors.
+. `metadata.id` matches `^[a-z0-9-]+$` and `metadata.passportRev` is an integer `>= 1`.
+. Every declared `topologyModes` entry provides `description`, `minNodes`, `replicas`, `scaleDownPolicy` and `disruptionBudget`.
+. Every `workload.configFormulas` entry sets `cel`, `targetPath`, `applyImpact` and `description`.
+. For each `provides[].clientContract.sidecar`, `sharedQuotaFormula` (when present) is a valid CEL expression over the documented context; listeners and `exportedTokens` are consistent with `requires[].envMapping` of typical consumers.
+. Operations that claim backup or migration capability fill the corresponding `operations.backup` / `operations.liveMigration` blocks completely.
+
+=== Conforming topology
+
+A TopologyBlueprint document conforms when:
+
+. It validates against `schemas/topology_spec.cue` with no errors.
+. Every `clusters[].cni.clusterMeshId` is unique within the blueprint and in `1..50`; induced Pod and Service CIDRs do not collide with existing networks.
+. Every `clusters[].security.sopsRecipients` is non-empty and well-formed.
+. Component instances pin `passport`, `version` and `passportRev`; `config` keys are declared in the referenced passport `parameters` (or are explicitly reserved).
+. Bindings resolve: `to` exists, `toSlot`/`asRequirement` match provider/consumer declarations, and `deliveryGuarantee: transactional-outbox` sets `outboxSourceRequirement`.
+. Node inventory is consistent with `minNodes` of selected `topologyModes`; disk allocations respect system and snapshot reserves.
+
+=== Conforming compiler / toolchain
+
+An implementation of the AmiSpec compilation model conforms when:
+
+. Compilation is deterministic: identical (passport set + topology) yields identical manifest tree (up to allowed timestamp fields).
+. All *compiler invariants* in <<compiler-invariants>> are enforced.
+. Generated manifests carry the Provenance metadata listed in this document so that lossless decompilation is possible.
+. The implementation does not execute runtime `scripts` on the compile host; they are packaged content-addressed (`-<sha8>`) and mounted read-only.
+
+=== Conformance levels
+
+[cols="2,4", options="header"]
+|===
+| Level | Meaning
+
+| *Passport-author conformant*
+| Passports validate and fill required blocks; examples in this guide are followed.
+
+| *Topology-author conformant*
+| Blueprints validate; bindings, budgets and CIDR rules hold.
+
+| *Toolchain conformant*
+| Compiler and solver enforce invariants and provenance; reverse builder satisfies <<reverse-compilation>> (Level A round-trip).
+
+| *Fully conformant ecosystem*
+| All of the above plus the twelve invariants of <<invariants>> hold in running deployments.
+|===
+
+Validation matrix of industrial scenarios (see <<validation-matrix>>) serves as a recommended conformance test suite. A claim of the form “implementation X supports AmiSpec 1.0” SHOULD cite the levels above.
+
+[preface]
+== How to read this guide
+
+This document combines the normative specification with a layered user guide. The guide is organized as progressive disclosure in three parts.
+
+[cols="1,3,3", options="header"]
+|===
+| Level | Audience | Contents
+
+| *Part I. First contact*
+| Newcomers, architects, tech leads
+| Why the standard exists, core concepts, a minimal working example, compile pipeline overview
+
+| *Part II. Practical guide*
+| Practitioners, DevOps, SRE
+| Schema blocks in real scenarios: HA, sidecars, migrations, multi-cluster, operations
+
+| *Part III. Reference*
+| Passport authors, integrators, tooling authors
+| Full CUE meta-schemas, field reference, CEL formulas, compilation model, glossary
+|===
+
+*Recommended path:* read Part I fully, then pick Part II chapters by task. Part III is the reference for writing or reviewing a passport. Normative obligations are concentrated in the front-matter clauses and in Part III schemas/invariants; Parts I–II are informative.
+
+[preface]
+== Why AmiSpec
+
+[NOTE]
+====
+This section is *informative*.
+====
+
+Modern Kubernetes clusters are described by dozens of disconnected manifests: Helm charts, operator CRDs, NetworkPolicy, HPA, backup jobs, migration scripts. Humans cannot see the system as a whole; automation cannot check consistency *before* deploy.
+
+AmiSpec addresses this with two linked artifacts:
+
+* *Component passport* (`ComponentPassport`) — a reusable description of “how this class of services works”: availability modes, tuning formulas, connection sidecars, volumes, backups, service actions. A passport is like a *class* in OOP.
+* *Topology* (`TopologyBlueprint`, usually `topology.yaml`) — a concrete deployment: which instances are placed, on which nodes, with which resources and bindings. A topology is like an *instance*.
+
+From the pair “passport + topology”, a full tree of declarative cluster manifests (Kubernetes + GitOps) is compiled deterministically. The same model of infrastructure relationships serves capacity validation, policy checks, and compilation — tooling works from one contract so that services, stores, networks, and nodes can be governed as a connected system rather than as isolated manifests.
+
+.AmiSpec end-to-end data path
+[mermaid]
+----
+flowchart LR
+    Catalog["Passport catalog<br/>ComponentPassport"] --> Model["Infrastructure relationship model<br/>+ capacity validation"]
+    Catalog --> Compiler["Compiler<br/>ami compile"]
+    Model -->|"topology.yaml"| Compiler
+    Compiler --> Flux["Manifest tree<br/>GitOps / FluxCD"]
+----
+
+=== Twelve invariants of the standard
+[[invariants]]
+
+The twelve base invariants are *normative*. Any conforming AmiSpec implementation and any conforming passport deployment MUST satisfy them. The invariants also explain *why* schema fields are shaped as they are and serve as review criteria.
+
+. *GitOps First.* Deployments MUST NOT rely on manual cluster changes outside Git. A deploy is a deterministic compilation of `topology.yaml` and passports into manifests and a Git commit.
+. *Zero-Privilege Control Plane.* The control plane MUST NOT have arbitrary shell access to nodes. Management flows only through Git commits and a local allowlist of permitted actions.
+. *Inversion of the client balancer (`clientContract`).* The application MUST NOT choose how to connect to an HA database: the provider passport dictates which local proxy sidecar is injected into the consumer pod. The application always connects to `127.0.0.1`.
+. *Kernel race protection (`Node Readiness Gate`).* A heavy datastore MUST NOT start on a node until the agent has applied the kernel tuning profile and affirmed readiness with the gate label.
+. *Resource mathematics.* Datastore parameters (`shared_buffers`, JVM heap, and similar) MUST be computed by formulas from the allocated memory limit rather than set ad hoc.
+. *Universal archetypes.* The archetypes `generic-stateless` and `generic-stateful` MUST allow packaging arbitrary (including commercial) software without changing the meta-schema.
+. *Hybrid bridge and migration replicas.* A topology MUST be able to describe external resources and catch-up replicas with a safe cutover.
+. *Multiple balancers.* A single cluster MUST be able to host `edge-proxy`, `l7-gateway`, and `l4-balancer` with distinct roles.
+. *Mutations from inbound bindings.* Establishing a typed binding (for example CDC) MUST apply the corresponding provider mutations (for example `wal_level = logical`).
+. *Observability economics.* Local anomaly detectors MUST be usable without mandatory external calls; expensive AI/event paths MUST be deduplicated.
+. *Declarative service actions (`day2Actions`).* First-aid operations MUST be described in the passport with roles and cooldowns rather than run ad hoc.
+. *Multi-cluster relations.* A single graph MUST be able to describe multiple clusters and links between them without overlapping Pod CIDR subnets.
+
+== Part I. First contact
+[[part-i]]
+
+[NOTE]
+====
+Part I is *informative* (tutorial material). Normative definitions: <<terms>>, <<conformance>>, and Part III.
+====
+
+=== Key concepts
+
+Before the first example, six terms are enough.
+
+[cols="2,5", options="header"]
+|===
+| Term | Essence
+
+| *Passport (`ComponentPassport`)*
+| Reusable description of a service class: workload engine, topology modes, config formulas, network slots, hardware requirements, backups, and Day-2 actions. Versioned via `passportRev`.
+
+| *Topology (`TopologyBlueprint`)*
+| Concrete deployment: clusters, nodes, component instances, bindings, external resources. Usually lives in `topology.yaml` or the modular tree `topology/`.
+
+| *Slot (`provides[].slot`)*
+| Named outbound capability of a provider: “what I can share” (SQL cluster, KV, queue, REST API).
+
+| *Requirement (`requires[<slot>]`)*
+| Named inbound need of a consumer: “what I need” and how exported values become environment variables.
+
+| *Binding (`binding`)*
+| Graph edge: a consumer connects to a provider slot. A binding may carry `envPrefix`, a secret rotation epoch, and a delivery guarantee.
+
+| *Topology mode (`topologyModes`)*
+| Availability profile: `standalone`, `degraded-ha`, `strict-ha`, `sharded-cluster` — with quorum, disruption budget, and anti-affinity.
+|===
+
+Relationships between artifacts:
+
+[source,text]
+----
+Passport (class)  ──used by──►  Topology (instance)
+       │                              │
+       │  parameters / configFormulas │  config / resources / storage
+       │  provides / requires         │  bindings / expose
+       ▼                              ▼
+         Deterministic compile (ami compile)
+                      │
+                      ▼
+         Cluster declarative manifest tree
+----
+
+==== Description language
+
+The standard is built on three layers:
+
+* *CUE* — meta-schemas (`component_passport.cue`, `topology_spec.cue`). CUE unifies schemas and values and supports formulas and strict typing.
+* *YAML* — the passports and topologies themselves: human-readable, easy to review in Git, deterministically serializable.
+* *CEL (Common Expression Language)* — safe formulas for config, quotas, and policy conditions. CEL has no I/O, always terminates, and evaluates in microseconds — identically in the browser and in the compiler.
+
+This combination is deliberate: plain JSON Schema cannot express formulas; Jsonnet/Dhall are too Turing-complete for instant bidirectional graph editing; separate runtimes (Pkl, KCL) add an unnecessary entry barrier. When needed, JSON Schema is *generated* from CUE as a machine artifact for IDEs.
+
+=== First example: minimal topology
+
+Below is the smallest meaningful topology: one stateless application and one database in a single-node cluster.
+
+[source,yaml]
+----
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: "demo-blog"
+  organization: "example-org"
+  gitMode: "managed-embedded"
+
+clusters:
+  - id: local
+    name: "Demo Cluster"
+    domain: "example.local"
+    security:
+      sopsRecipients:
+        - "age1examplepublickey00000000000000000000000000000000000000"
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1
+    nodes:
+      - id: node-1
+        role: control-plane-worker
+        pricingTier: micro-vps
+        hardware:
+          arch: amd64
+          cpuCores: 4
+          memoryMb: 8192
+          disks:
+            - { name: "nvme0n1", tier: "nvme-local", sizeGb: 100 }
+
+    components:
+      - id: web
+        passport: stateless-app
+        version: "1.0.0"
+        passportRev: 1
+        workloadOverride:
+          image: "ghcr.io/example/blog-web:1.0.0"
+        topology: { mode: standalone, replicas: 1 }
+        resources: { cpuCores: 1, memoryMb: 512 }
+        expose:
+          - { endpoint: web, viaBalancer: main-l7, scope: public }
+
+      - id: db
+        passport: postgresql
+        version: "18.0.0"
+        passportRev: 6
+        topology: { mode: standalone }
+        resources: { cpuCores: 2, memoryMb: 2048 }
+        storage: { sizeGb: 20 }
+        backupTarget: backups-s3
+
+    bindings:
+      - { from: web, to: db, toSlot: sql-cluster, asRequirement: database }
+
+externalResources:
+  - id: backups-s3
+    passport: external-s3-compatible
+    role: backup-vault
+    endpointFqdn: "s3.example.com"
+    bucket: "demo-backups"
+    secretRef: "sops://secrets/s3.enc.yaml"
+----
+
+What happened here:
+
+. One cluster `local` with a single node (memory and disk are physical hardware facts).
+. Two components: a web application on the `stateless-app` archetype and PostgreSQL on the reference `postgresql` passport.
+. One binding `web → db`: the compiler creates a connection secret and (in HA mode) a local `pgbouncer` sidecar in the web application pod.
+. Backups go to external S3 (`externalResources`).
+
+Fields such as `sopsRecipients`, `clusterMeshId`, and `backupTarget` are covered in Part II; at this stage it is enough to know they are required for correct compilation.
+
+=== How a component passport is structured
+
+A passport is a “smart service class”. The smallest meaningful passport:
+
+[source,yaml]
+----
+apiVersion: catalog.amispec.io/v1
+kind: ComponentPassport
+metadata:
+  id: demo-worker
+  name: "Demo Queue Worker"
+  version: "1.0.0"
+  passportRev: 1
+  category: application
+  archetype: stateless-app
+  distribution:
+    tier: open-core
+    license: Apache-2.0
+  canvasUI:
+    icon: "worker-gear"
+    accentColor: "#2563EB"
+    nodeShape: standard-card
+
+topologyModes:
+  standalone:
+    description: "1 replica without availability guarantees"
+    minNodes: 1
+    replicas: 1
+    scaleDownPolicy: immediate
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: soft
+
+workload:
+  engine: k8s-deployment
+  priorityClass: background-batch
+  container:
+    image: "ghcr.io/example/demo-worker:1.0.0"
+    readOnlyRootFilesystem: true
+  probes:
+    liveness: { type: exec, command: ["pgrep", "-f", "worker"], localProcessOnly: true }
+
+interfaces:
+  egressDefaultMode: graph-only
+  endpoints: []
+  provides: []
+  requires:
+    database:
+      capability: postgres-sql
+      optional: false
+      dependencyStage: infrastructure-ready
+      envMapping:
+        DATABASE_URL: "${exported.uri}"
+
+hardwareAndKernel:
+  resources:
+    minCpuCores: 0.25
+    minMemoryMb: 128
+    recommendedMemoryMb: 512
+
+operations:
+  observability:
+    scrapeInterval: "30s"
+----
+
+Required passport blocks: `metadata`, `topologyModes`, `workload`, `interfaces`, `hardwareAndKernel`, `operations`. Optional: `parameters`, `macros`, `scripts`. Each block is detailed in Part II and fully described in the reference.
+
+=== From description to deploy
+
+Compilation (`ami compile`) is a deterministic projection “1 card → 5–8 manifests”. The result is a GitOps cluster hierarchy of seven ordered stages with acyclic `dependsOn`:
+
+[source,text]
+----
+clusters/<cluster-id>/
+├── flux-system/                     # 0. GitOps control plane
+├── 01-node-tuning/                  # 1. Kernel tuning profiles + Readiness Gate
+├── 02-operators-and-networking/     # 2. Operators and load balancers
+├── 03-stateful-clusters/            # 3. Datastore clusters
+├── 04a-provisioners-day2/           # 4a. Idempotent DDL Jobs (-<sha8>)
+├── 04b-app-migrations-expand/       # 4b. Schema expand migrations BEFORE rollout
+├── 05-applications/                 # 5. Applications, HPA, KEP-753 sidecars
+└── 06-zero-trust-and-observability/ # 6. NetworkPolicy, metrics, dashboards
+----
+
+Stage order prevents classic deadlocks: core and networking first, then data, then provisioning and migrations, and only then applications.
+
+Compilation is reversible. Provenance labels (`amispec.io/component-id`, `amispec.io/passport`, `amispec.io/injected-sidecars`, `amispec.io/user-spec-delta`) are written into manifests so `ami decompile` can reconstruct the topology losslessly. For foreign (brownfield) clusters, `ami import-k8s` provides heuristic import with private-passport synthesis.
+
+==== Capacity solver
+
+Before a Git commit, the relationship graph is checked against the capacity model (node budgets and reservations):
+
+* node RAM budget minus system reserve and slab;
+* peak envelope under `maxReplicas` and `RollingUpdate maxSurge`;
+* disk exclusivity (`diskExclusive`) and `mergeStrategy: exclusive-match` conflicts;
+* forbid shrinking a volume below the already allocated size (`committedSizeGb`);
+* CPU architecture and failure-domain compatibility;
+* change impact preview (`Apply Impact Preview`): `in-place` / `hot-reload` / `rolling-switchover` / `pod-restart`.
+
+Validation uses the same CEL logic as the compiler, so a consistent capacity model means a compilable topology.
+
+== Part II. Practical guide
+[[part-ii]]
+
+[NOTE]
+====
+Part II is *informative* (practical scenarios and walkthroughs). Normative field and conformance requirements are in Part III and <<conformance>>.
+====
+
+=== The component passport in practice
+
+The passport is reviewed block by block — from metadata to operations. Wherever a parameter protects against a specific failure, the reason is stated explicitly: that is the key to sound review.
+
+==== Metadata, distribution, and visualization
+
+[source,yaml]
+----
+metadata:
+  id: postgresql                      # ^[a-z0-9-]+$
+  name: "PostgreSQL HA"
+  version: "18.0.0"                   # SemVer software version
+  passportRev: 6                      # passport revision (>=1)
+  category: database                  # database | analytics | cache | message-queue |
+                                      # application | ai-ml | gateway | observability |
+                                      # storage | security | external
+  archetype: operator-cluster         # stateless-app | stateful-service | operator-cluster |
+                                      # edge-gateway | external-bridge | scheduled-job
+  distribution:
+    tier: open-core                   # open-core | private-custom
+    license: Apache-2.0
+    vendor:                           # optional; required for commercial software
+      name: "Example Vendor"
+      requiresLicenseKey: true        # requests a sops license secret
+  canvasUI:
+    icon: "postgres-elephant"
+    accentColor: "#336791"
+    nodeShape: database-cylinder      # standard-card | database-cylinder | queue-pipe |
+                                      # gateway-shield | external-cloud
+    badges: ["HA", "R/W Split"]
+    cardPinnedFields: ["topology.mode", "resources.memoryMb"]
+    quickControls:
+      - { field: "storage.sizeGb", label: "NVMe size", control: slider }
+----
+
+*Why `passportRev` is separate from `version`:* software version follows upstream; passport revision is the evolution of *our* rules (formulas, sidecars, quotas). `topology.yaml` pins `passportRev` so catalog updates do not silently recompile existing clusters.
+
+*Why `distribution.tier`:* the open-core / private-custom boundary lets part of the catalog be community-facing while private passports live in `.amispec/private-specs/` without forking the schema.
+
+==== User parameters (`parameters`)
+
+The `parameters` dictionary is a declarative settings contract. It simultaneously drives tooling (forms, editors, APIs), validates `config` in the topology, and injects values into env or manifest `targetPath` — without raw Helm YAML.
+
+[source,yaml]
+----
+parameters:
+  log_min_duration_statement:
+    label: "Slow-query log threshold (ms)"
+    type: int                           # string | int | number | bool | enum | string-list | secret-ref
+    default: 250
+    min: 0
+    max: 60000
+    targetPath: "spec.postgresql.parameters.log_min_duration_statement"
+    applyImpact: hot-reload             # pod-restart | hot-reload | rolling-switchover | immutable
+    uiControl: number                   # input | number | slider | select | toggle | tags
+  data_durability:
+    label: "Synchronous replication guarantee"
+    type: enum
+    enumValues: ["async-fast", "sync-preferred", "sync-strict"]
+    default: "async-fast"
+    targetPath: "spec.postgresql.synchronous.dataDurability"
+    applyImpact: hot-reload
+    uiControl: select
+    visibleWhen: "topology.mode != 'standalone'"   # CEL condition to show the control
+----
+
+If `targetPath` is omitted, the value is exported as a container environment variable. `applyImpact` is required: tooling can warn in advance whether a change needs a restart.
+
+==== Macros and scripts
+
+Two distinct extension circuits — deliberately not mixed.
+
+[cols="2,3,3", options="header"]
+|===
+| | `macros` (compile-time) | `scripts` (runtime)
+
+| *What it is*
+| Pure CEL functions | Named executable scripts (`posix-sh`, `sql`, `python`)
+| *When they run*
+| At compile / solver time | In-cluster, inside Job / lifecycle / Day-2 actions
+| *Limits*
+| No I/O, terminate in < 1 ms | Never executed on the compiler host
+| *How they are addressed*
+| `passport.macros.<name>(...)`, `topology://macros/<name>` | `passport://scripts/<name>`, `topology://scripts/<name>`
+| *How they are delivered*
+| Inlined into computations | `ConfigMap`/`Secret` with `-<sha8>` suffix, mounted read-only
+|===
+
+[source,yaml]
+----
+macros:
+  pgSharedBuffers: "string(int(memMb * 0.25)) + 'MB'"
+scripts:
+  seed-quotas:
+    runtime: sql
+    path: scripts/seed-tenant-quotas.sql
+    timeoutSeconds: 300
+    mountAsSecret: false
+  verify-ledger:
+    runtime: posix-sh
+    inline: |
+      set -euo pipefail
+      test "$(wc -l < /var/run/ledger.pending)" -eq 0
+----
+
+Why scripts do not run at compile time: arbitrary code at build time breaks GitOps determinism, opens RCE via PRs, and kills solver latency. Therefore the compile-time circuit is pure CEL only; everything executable lives in the cluster with content-addressed naming: editing a script changes the `-<sha8>` hash and automatically restarts the Job.
+
+==== Topology modes, quorums, and disruption budget
+
+[source,yaml]
+----
+topologyModes:
+  degraded-ha:
+    description: "2 nodes Primary + Standby with Split-Brain protection"
+    minNodes: 2
+    replicas: 2
+    maxReplicas: 2                      # e.g. 1 for singleton cron jobs
+    scaleDownPolicy: safe-drain-required  # safe-drain-required | immediate
+    quorumType: primary-standby         # none | raft-odd | primary-standby | witness-assisted
+    quorumArbiter: cloud-lease-fencing  # none | witness-pod | cloud-lease-fencing
+    witnessComponent:                   # lightweight quorum arbiter
+      enabled: true
+      replicas: 1
+      image: "example/keeper:1.0"
+      cpuMillicores: 100
+      memoryMb: 192
+      placement: control-plane-or-third-fault-domain
+    disruptionBudget:
+      maxUnavailable: 1
+      updateStrategy: primary-last      # rolling | primary-last | recreate
+    podAntiAffinity: hard-per-node      # soft | spread-skew-1 | hard-per-node | hard-per-zone | hard-per-disk
+    uiWarning: "2-node mode: survives loss of 1 server."
+----
+
+*Why `quorumArbiter` in `degraded-ha`:* on two servers, a network split without a third quorum point leads either to a halt or to two primaries. A lightweight `witnessComponent` (hundreds of MB) or external `cloud-lease-fencing` blocks writes on the isolated node.
+
+*Why `scaleDownPolicy: safe-drain-required`:* when shrinking a sharded cluster, stock Kubernetes simply kills the pod, leaving an orphaned PVC and losing un-drained partitions. The policy requires `preScaleDownDrainCommand` before removal.
+
+*Why `podAntiAffinity: spread-skew-1`:* hard `hard-per-node` with `replicas > nodes` or `maxSurge: 1` leaves a pod in `Pending` forever. `spread-skew-1` maps to `topologySpreadConstraints` with `maxSkew: 1` and guarantees even spread without deadlock.
+
+*Why `witnessComponent.replicas` and `cpuMillicores`:* `degraded-ha` needs one ~192 MB witness, while `strict-ha`/`sharded-cluster` deploy a full ring of three coordinators — without explicit fields capacity accounting would miss nearly a gigabyte of RAM.
+
+==== Workload engine (`workload`)
+
+==== Engine and container
+
+[source,yaml]
+----
+workload:
+  engine: k8s-deployment               # k8s-deployment | k8s-statefulset | k8s-daemonset |
+                                       # k8s-cronjob | flux-helm-release | operator-crd
+  allowWorkloadOverride: false         # true only for base archetypes
+  peerDiscovery: headless-early-dns    # none | headless-early-dns
+  priorityClass: auto-by-archetype     # auto-by-archetype | system-critical | stateful-core |
+                                       # stateless-web | background-batch
+  schedule:                            # only for k8s-cronjob
+    cron: "0 2 * * *"
+    concurrencyPolicy: Forbid          # Forbid | Replace | Allow
+    timeoutSeconds: 3600
+  container:
+    image: "registry.example.com/app:1.2.3"
+    imageDigest: "sha256:…"            # immutable pin
+    pullSecretRequired: true
+    readOnlyRootFilesystem: true
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      fsGroup: 10001
+    command: ["gunicorn", "app.wsgi"]
+    zeroEndpoints: true                # pure queue worker
+----
+
+*Why `imageDigest`:* floating tags cause version skew between replicas.
+
+*Why `peerDiscovery: headless-early-dns`:* on cold start of a clustered StatefulSet nodes look each other up via DNS, but Kubernetes publishes DNS only after `readinessProbe`, while readiness waits for the quorum — an eternal deadlock. A Headless Service with `publishNotReadyAddresses: true` breaks the cycle.
+
+*Why `priorityClass`:* under `MemoryPressure`, kubelet without priorities may evict a datastore replica instead of a background worker. `auto-by-archetype` assigns datastores `stateful-core` (+10000), web `stateless-web` (+5000), workers `background-batch` (+1000).
+
+*Why `securityContext.fsGroup`:* an unprivileged container gets `Permission denied` on a freshly formatted XFS/ext4 TopoLVM volume without the correct fsGroup.
+
+*Why `readOnlyRootFilesystem`:* enables an auto-scratch tmpfs on `/tmp` and `/var/run` and protects against a log bomb in the rootfs.
+
+==== Companions, probes, lifecycle
+
+[source,yaml]
+----
+  companions:                          # tightly coupled companion containers in the same pod
+    - name: nginx
+      image: "nginx:1.27"
+      imageDigest: "sha256:…"
+      ports: [8080]
+      memoryMb: 64
+      cpuCores: 0.1
+      mountPaths: ["/var/run/php-fpm"]
+  probes:
+    startup:
+      type: http
+      scheme: HTTPS
+      path: "/health/startup"
+      port: 8443
+      failureThreshold: 30
+      periodSeconds: 2
+    liveness:
+      type: http
+      scheme: HTTPS
+      path: "/health/live"
+      port: 8443
+      localProcessOnly: true            # do NOT call the database!
+    readiness:
+      type: tcp
+      port: 8443
+      checkLocalSidecars: true
+      periodSeconds: 5
+  lifecycle:
+    preDeployExpandCommand: ["/app/cli", "db-migrate", "--phase=expand"]
+    postDeployContractCommand: ["/app/cli", "db-migrate", "--phase=contract"]
+    preScaleDownDrainCommand:
+      scriptRef: "topology://scripts/drain-shard"
+      args: ["--shard=${ordinal}"]
+    jobTimeoutSec: 600
+    jobBackoffLimit: 3
+    rollingUpdateSurgePolicy: adaptive-zero-surge-on-tight-ram
+    preStopSleepSec: 5
+    gracefulStopTimeoutSec: 35
+----
+
+*Why the three probes are separate:* if `livenessProbe` checks database connectivity, a two-second primary switch will kill all backend pods. `liveness` is local process only; `readiness` may check sidecars.
+
+*Why Expand/Contract in two Jobs:* migrations in every replica `entrypoint` race and deadlock; a destructive migration in `preDeploy` breaks old pods during `RollingUpdate`. `preDeployExpandCommand` runs before rollout, `postDeployContractCommand` after.
+
+*Why `jobTimeoutSec` and the `-<sha8>` suffix:* a Kubernetes `Job` template is immutable; without a hash in the name Flux cannot update the Job. The hash solves both `field is immutable` and idempotency.
+
+*Invariant `terminationGracePeriodSeconds`:* the compiler computes it as
+`max(gracefulStopTimeoutSec, preStopSleepSec + max(maxEndpointTimeoutSec, maxStatementTimeoutSec))`
+so no active stream or SQL statement is killed by `SIGKILL` before its legitimate timeout.
+
+*Why `adaptive-zero-surge-on-tight-ram`:* with `maxSurge: 1` and only 400 MB free, the deploy hangs in `Pending`. If there is no headroom, the compiler switches the strategy to `maxSurge: 0, maxUnavailable: 1`.
+
+==== Config formulas (`configFormulas`)
+
+[source,yaml]
+----
+  configFormulas:
+    shared_buffers:
+      cel: "string(int(resources.memoryMb * 0.25)) + 'MB'"
+      unit: MB                          # MB | GB | bytes | count | string
+      targetPath: "spec.postgresql.parameters.shared_buffers"
+      applyImpact: rolling-switchover   # hot-reload | rolling-switchover | pod-restart
+      description: "25% of the container memory limit"
+    work_mem:
+      cel: "string(max(4, int((resources.memoryMb * 0.20) / max(100, min(500, int(resources.memoryMb / 16)))))) + 'MB'"
+      targetPath: "spec.postgresql.parameters.work_mem"
+      applyImpact: hot-reload
+      description: "Peak (max_connections * work_mem) does not cause OOM-Kill"
+----
+
+Formulas are the heart of “resource mathematics”. `work_mem` is tied to `max_connections` and the `oomSafetyMarginPercent` reserve, so raising the connection limit automatically shrinks per-query memory. `applyImpact` tells operators and tooling whether a restart is needed.
+
+==== Config mounts
+
+[source,yaml]
+----
+  configMounts:
+    - name: license-file
+      mountPath: "/etc/app/license.key"
+      subPath: "license.key"            # note: subPath freezes the inode
+      fromSecret: true
+      reloadStrategy: pod-restart       # pod-restart | hot-inotify | sighup
+    - name: app-conf
+      mountPath: "/etc/app/conf.d"
+      fromSecret: true
+      reloadStrategy: hot-inotify       # atomic update via ..data, no restart
+----
+
+*Why `reloadStrategy`:* mounting a single file via `subPath` does not refresh on secret rotation without a restart; a directory mount updates atomically through the `..data` symlink and with `inotify` needs no disruptive restart.
+
+==== Helm releases and operators
+
+[source,yaml]
+----
+  helmSpec:                            # for engine: flux-helm-release
+    repository: "oci://registry.example.com/charts"
+    chart: "keycloak"
+    version: "26.0.0"
+    chartDigest: "sha256:…"            # supply-chain pin
+    valuesTemplate: "templates/keycloak-values.yaml.j2"
+  operatorSpec:                        # for engine: operator-crd
+    operatorHelmChart: "cloudnative-pg/cloudnative-pg"
+    operatorVersion: "0.23.0"
+    crdApiVersion: "postgresql.cnpg.io/v1"
+    crdKind: "Cluster"
+    manifestTemplate: "templates/cnpg-cluster.yaml.j2"
+----
+
+==== Network interfaces (`interfaces`)
+
+==== Egress traffic
+
+[source,yaml]
+----
+  egressDefaultMode: graph-only        # graph-only | allow-public-internet | allow-fqdn-whitelist
+  allowedFqdns:
+    - "api.example.com"                # TCP :443 by default
+    - "smtp.example.com:587"           # explicit port
+    - "203.0.113.10/32:8443"           # CIDR with port
+----
+
+*Why `graph-only` is the default:* zero-trust — only explicitly bound traffic leaves the cluster. The compiler always allows `kube-dns:53`, otherwise NetworkPolicy creates a DNS black hole.
+
+*Why the `host:port` notation:* integrations with SMTP (587), SFTP (22), and partner subnets must open a specific port, not all 65535.
+
+==== Inbound endpoints
+
+[source,yaml]
+----
+  endpoints:
+    - name: api
+      protocol: http                   # http | grpc | tcp | udp | tcp-udp
+      tlsMode: auto-internal-ca        # none | auto-internal-ca | self-signed-upstream
+      containerPort: 8443
+      path: "/api"                     # for ServiceMonitor / base path
+      role: api                        # ui | api | management | telemetry | datastore | event-stream | generic
+      defaultScope: cluster-private    # public | protected | cluster-private | telemetry
+      defaultSubdomain: "api"
+      gatewayTuning:
+        streaming: sse                 # none | websocket | sse | grpc-bidi
+        sessionAffinity: none          # none | client-ip | cookie-sticky
+        maxBodySizeMb: 50              # 0 = unlimited (image push, S3)
+        requestHeadersTimeoutSec: 10   # Slowloris protection on long streams
+        timeoutSeconds: 1800
+        rateLimitRps: 500
+        proxyProtocolV2: false
+      routes:
+        - { path: "/api/v2/*", role: api, scope: public }
+        - { path: "/*", role: ui, scope: protected }
+----
+
+*Why `tlsMode`:* if the container listens on a TLS port, an HTTP probe and scheme-less upstream send plaintext and get `400 Bad Request`.
+
+*Why `requestHeadersTimeoutSec` is separate from `timeoutSeconds`:* an LLM stream may last 1800 s, but the client must send headers within 10 s — otherwise a Slowloris attack exhausts the worker pool.
+
+*Why `tcp-udp`:* modern web services need HTTP/3 (UDP :443 alongside TCP), and media/DNS listen on one port in both protocols.
+
+==== `provides` slots and the client sidecar (`clientContract`)
+
+This is the central mechanism of the standard (invariant #3). The database passport itself decides which local proxy to inject into the consumer pod.
+
+[source,yaml]
+----
+  provides:
+    - slot: sql-cluster
+      capability: postgres-sql
+      dialect: postgresql
+      version: "18.0.0"
+      clientContract:
+        injectWhenModes: ["degraded-ha", "strict-ha"]
+        sidecar:
+          name: pgbouncer-sidecar
+          image: "example/pgbouncer-ha:1.23"
+          injectionTarget: k8s-native-init-restart-always
+                                       # k8s-native-init-restart-always | standard-container
+          deduplicationScope: per-target-component
+                                       # per-target-component | per-binding
+          portAllocationStrategy: deterministic-offset
+                                       # deterministic-offset | static
+          sharedQuotaFormula: "max(2, int((int(configFormulas.max_connections) * 0.80) / max(1, graph.maxBoundConsumerPods)))"
+          settings:
+            poolMode: transaction
+            maxPreparedStatements: 200
+          listeners:
+            - { name: rw, baseLocalPort: 5432, targetRole: primary-rw }
+            - { name: ro, baseLocalPort: 5433, targetRole: replicas-ro }
+          resources: { cpuMillicores: 50, memoryMb: 48 }
+          healthcheckIntervalSec: 1
+          preStopDrainDelaySec: 5
+          configTemplate: "sidecars/pgbouncer.ini.j2"
+        exportedTokens:
+          host: "=${ topology.mode == 'standalone' ? service.rwDns : '127.0.0.1' }"
+          port: "=${ allocatedPorts.rw }"
+          roPort: "=${ allocatedPorts.ro }"
+          uri: "postgresql://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.rw}/${credentials.database}"
+      provisioner:
+        driver: sql-job                 # arbitrary driver identifier
+        image: "postgres:18-alpine"
+        template: "provisioners/init-db-user.sql.j2"
+        scriptRef: "passport://scripts/seed-quotas"
+        quotas:
+          roleConnectionQuotaPercent: 50
+        parameters:
+          defaultStatementTimeoutSec: 60
+    - slot: cdc-replication
+      capability: postgres-cdc-wal
+      version: "18.0.0"
+      onConsumerBindMutations:
+        setConfig:
+          "spec.postgresql.parameters.wal_level": "logical"
+          "spec.postgresql.parameters.max_replication_slots": "20"
+      provisioner:
+        driver: sql-job
+        image: "postgres:18-alpine"
+        template: "provisioners/init-cdc.sql.j2"
+----
+
+Key design decisions:
+
+[cols="2,5", options="header"]
+|===
+| Mechanism | Failure it prevents
+
+| `injectionTarget: k8s-native-init-restart-always`
+| A plain sidecar starts in parallel with the app (`Connection refused` in the first ms), dies before the app, and blocks K8s Jobs. A native sidecar (KEP-753, `initContainers` + `restartPolicy: Always`) starts *before* the app, stops *after*, and terminates in Jobs.
+
+| `deduplicationScope: per-target-component`
+| Two sidecars for two databases of one cluster waste RAM; two different clusters break the port. Scope merges connections to one physical cluster into one sidecar.
+
+| `portAllocationStrategy: deterministic-offset`
+| `127.0.0.1:5432` collision with two Postgres clusters. The second cluster gets a deterministic offset (`15432`) and `${allocatedPorts.rw}` receives the actual port.
+
+| `sharedQuotaFormula` + `graph.maxBoundConsumerPods`
+| The pool is sized for the *peak*: `max(2, floor(0.80 * max_connections / maxBoundConsumerPods))`, where `maxBoundConsumerPods` = Σ (`coalesce(autoscaling.maxReplicas, replicas) + maxSurge`) of all consumers. The sum of pools never exceeds 80% of `max_connections`, even at HPA peak and RollingUpdate.
+
+| `settings.maxPreparedStatements`
+| Named prepared statements (ORM: Prisma, pgx, asyncpg, Django) conflict with `pool_mode = transaction`. Native protocol support allows transaction pooling without code changes.
+
+| `listeners` rw/ro
+| One port sends everything to the Primary, leaving Standby idle. Two listeners (`5432` Primary, `5433` round-robin over Standby with fallback) load read replicas.
+
+| `preStopDrainDelaySec` only for `standard-container`
+| With KEP-753 kubelet guarantees shutdown order: an extra `preStop: sleep 5` in every sidecar burns `terminationGracePeriodSeconds`.
+
+| `provisioner.quotas` / `parameters`
+| Noisy neighbor on a shared datastore: SQL role quotas and `defaultStatementTimeoutSec` isolate tenants.
+
+| `onConsumerBindMutations`
+| A CDC binding must not require manual `wal_level = logical` — the mutation applies automatically when the edge is drawn.
+|===
+
+==== `requires` requirements
+
+[source,yaml]
+----
+  requires:
+    database:
+      capability: postgres-sql
+      optional: false
+      multiBind: false                  # allow multiple bindings of the same capability
+      dependencyStage: infrastructure-ready
+                                       # infrastructure-ready | runtime-parallel
+      versionConstraint: ">=15.0.0"
+      mountAsFilesPath: "/var/run/amispec/bindings/database"
+      envMapping:
+        DATABASE_RW_URL: "${exported.uri}"
+        DATABASE_RO_URL: "${exported.roUri}"
+    cache:
+      capability: redis-kv
+      optional: true
+      multiBind: true
+      dependencyStage: infrastructure-ready
+      envMapping:
+        REDIS_URL: "${exported.uri}"
+----
+
+*Why `dependencyStage`:* bidirectional `A ↔ B` edges would otherwise become cyclic GitOps `dependsOn`. The compiler splits two planes: networking (cycles allowed, DNS is static) and boot order (DAG only on `infrastructure-ready`; `runtime-parallel` starts in parallel).
+
+*Why `envPrefix` / `envOverrides` live on the binding edge (see the Bindings chapter):* one archetype serves many apps with different variable names, and `multiBind` to two Valkey instances would overwrite `REDIS_URL`.
+
+==== Hardware, storage, and kernel (`hardwareAndKernel`)
+
+==== Resources
+
+[source,yaml]
+----
+hardwareAndKernel:
+  resources:
+    supportedArchitectures: ["amd64", "arm64"]
+    minCpuCores: 2.0
+    minMemoryMb: 2048
+    recommendedMemoryMb: 16384
+    ephemeralStorageMb: 2048
+    shmSizeMb: 512                      # /dev/shm; K8s default is 64 MB
+    oomSafetyMarginPercent: 15          # 5..50
+    numaTopologyPolicy: single-numa-node   # best-effort | single-numa-node
+    networkQosClass: throughput-data    # realtime-interactive | throughput-data | background-bulk
+    cpuLimitPolicy: burstable-no-limit  # burstable-no-limit | hard-cfs-limit
+    verticalScalePolicy:
+      cpu: in-place                     # in-place | pod-restart
+      memory: in-place-grow-only        # in-place-grow-only | pod-restart
+    accelerators:
+      - { resourceClass: "nvidia.com/gpu", count: 1, minMemoryGb: 24 }
+    cpuPinning: shared                  # shared | exclusive-static
+----
+
+*Why `shmSizeMb`:* Kubernetes defaults `/dev/shm` to 64 MB. PostgreSQL, NCCL tensor parallelism (PyTorch/vLLM), and Headless Chromium crash with `SIGBUS`. An explicit size mounts `emptyDir: Memory` and is subtracted from the node budget.
+
+*Why `cpuLimitPolicy: burstable-no-limit`:* hard `limits.cpu == requests.cpu` enables Linux CFS quota, which freezes threads for 100 ms on micro-bursts even when the server is 80% idle. For memory, `requests.memory == limits.memory` is always required (OOM-Killer protection). The policy yields Guaranteed Memory + Burstable CPU.
+
+*Why `verticalScalePolicy`:* KEP-1287 can change CPU and grow RAM in a live cgroup v2 without restart. In-place RAM shrink would OOM — it is done only via `pod-restart`/rolling-switchover.
+
+*Why `networkQosClass`:* a nightly backup must not saturate the live traffic path; the class drives the eBPF EDT shaper (+ BBR).
+
+==== Volumes (`storage` / `volumes`)
+
+[source,yaml]
+----
+  storage:                             # single-volume shorthand (95% of cases)
+    mountPath: "/var/lib/postgresql/data"
+    minSizeGb: 10
+    defaultSizeGb: 50
+    resizePolicy: expand-only-monotonic   # expand-only-monotonic | immutable
+    deletionPolicy: retain                # retain | delete
+    nodeLossRecovery: rehydrate-from-backup
+                                         # rehydrate-from-backup | reseed-from-peer | manual-wait
+    mediaTier: nvme-local                 # nvme-local | ssd-network | hdd-bulk | ram-tmpfs
+    diskExclusive: false
+    lvmOptions:
+      provisioner: topolvm-nvme           # topolvm-nvme | local-path | external-csi
+      volumeBindingMode: WaitForFirstConsumer
+      mountFlags: ["noatime", "nodiratime"]
+      filesystem: xfs                     # xfs | ext4
+      emergencyBallastMb: 1024
+  volumes:                             # multi-volume configuration
+    wal:  { mountPath: "/var/lib/pg/wal",  minSizeGb: 20, defaultSizeGb: 50, mediaTier: nvme-local, resizePolicy: expand-only-monotonic, deletionPolicy: retain, nodeLossRecovery: rehydrate-from-backup, lvmOptions: { provisioner: topolvm-nvme, volumeBindingMode: WaitForFirstConsumer, mountFlags: ["noatime"], filesystem: xfs, emergencyBallastMb: 1024 } }
+    data: { mountPath: "/var/lib/pg/data", minSizeGb: 50, defaultSizeGb: 200, mediaTier: hdd-bulk,  resizePolicy: expand-only-monotonic, deletionPolicy: retain, nodeLossRecovery: rehydrate-from-backup, lvmOptions: { provisioner: topolvm-nvme, volumeBindingMode: WaitForFirstConsumer, mountFlags: ["noatime"], filesystem: xfs, emergencyBallastMb: 1024 } }
+----
+
+*Why `resizePolicy: expand-only-monotonic`:* XFS/ext4 and PVCs can only grow. The ratchet blocks shrinking the allocated size below `committedSizeGb` (including in interactive editors).
+
+*Why `deletionPolicy: retain`:* GitOps `prune: true` on component rename deletes the PVC with production data. `retain` sets a protective annotation.
+
+*Why `emergencyBallastMb`:* if a CDC reader stalls, WAL fills 100% of the disk, the datastore `PANIC`s and will not start. A 1–2 GB ballast is released via a service action so the database can boot.
+
+*Why `mountFlags` is `#MountFlag` (closed set):* free-form mount option strings only fail at mount time; typos and dangerous flags (`suid`, `exec`, `dev`, `user`) are rejected at validation. The closed set covers common Linux/CSI options; defaults remain `["noatime", "nodiratime"]`.
+
+*Why `volumeBindingMode: WaitForFirstConsumer`:* a TopoLVM volume lives on a specific node; without gravity binding the scheduler starts the pod where the volume is absent.
+
+*Why `nodeLossRecovery`:* if a node dies physically, a standalone service without a recovery policy is dead forever. `rehydrate-from-backup` provisions a clean volume and restores a snapshot.
+
+*Why `diskExclusive`:* Redpanda/ClickHouse need exclusive NVMe IOPS and cannot share one physical disk.
+
+==== Kernel (`kernelTuning`) and constraints
+
+[source,yaml]
+----
+  kernelTuning:
+    priority: 80                       # 1..1000, profile merge priority
+    maxClockSkewMs: 50
+    kernelModules: ["wireguard", "nvme_tcp"]
+    sysctl:
+      vm.max_map_count: { value: 262144, mergeStrategy: max }
+      vm.swappiness:   { value: 1,      mergeStrategy: min }
+    sysfs:
+      transparentHugepage: { value: "never", mergeStrategy: exclusive-match }
+      ioScheduler:         { value: "none",  mergeStrategy: exclusive-match }
+    ulimits:
+      nofile: 262144
+      nproc: unlimited
+  constraints:
+    incompatiblePassportsOnSameNode: ["opensearch"]
+    allowedSecurityZones: ["core-private"]
+    forbiddenConsumerZones: ["dmz-public"]
+----
+
+*Why `mergeStrategy`:* if ClickHouse leaves a node with `vm.max_map_count = 1600000`, resetting to default would kill remaining Elasticsearch. The daemon recomputes parameters from *remaining* pods; `exclusive-match` conflicts (e.g. THP modes) forbid co-location via `nodeAffinity`.
+
+*Why `maxClockSkewMs`:* clock skew > 500 ms breaks Raft quorums, transactions, and JWT. Node readiness is affirmed only with a synchronized chronyd.
+
+*Why `kernelModules`:* before setting the Readiness Gate the agent checks/loads allowlisted modules (`modprobe`).
+
+==== Operations (`operations`)
+
+==== Observability
+
+[source,yaml]
+----
+operations:
+  observability:
+    scrapeEndpoint: metrics
+    scrapeInterval: "30s"
+    grafanaDashboardJson: "dashboards/app.json"
+    logPolicy:
+      maxRateLinesPerSec: 1000
+      redactPii: true                   # mask PAN/JWT/passwords before leaving the node
+    localAnomalyRules:
+      - metric: "pg_replication_lag"
+        algorithm: static-threshold     # z-score-3sigma | linear-regression-disk-full | static-threshold
+        threshold: "> 30"
+        forDuration: "5m"               # hold window against single-sample spikes
+----
+
+*Why `forDuration`:* a one-second metric spike (checkpoint) without a hold window causes false alerts and extra calls.
+
+*Why `redactPii`:* card numbers or JWTs leaving the node toward external systems violate PCI-DSS and GDPR.
+
+==== Backups and PITR
+
+[source,yaml]
+----
+  backup:
+    mode: operator-managed             # operator-managed | sidecar-stream | volume-snapshot-job | custom-job
+    driver: cnpg-barman                # arbitrary driver name
+    versionCoupling: match-workload-major   # match-workload-major | pinned
+    targetReplicaRole: prefer-standby  # prefer-standby | primary-only
+    maxUploadBandwidthMbps: 250
+    retentionDays: 30
+    pitrEnabled: true
+    defaultCron: "0 1 * * *"
+    verifyRestoreJob: true
+----
+
+*Why `prefer-standby`:* a heavy backup from the Primary degrades production transaction latency.
+
+*Why `versionCoupling`:* PostgreSQL 18 + `pg_dump 16` produces corrupt archives; the backup tool must match the engine major version.
+
+*Why `verifyRestoreJob`:* an ephemeral readability check of the latest backup catches “write-only backup”.
+
+*Why `retentionDays`:* without retention, WAL and snapshots grow S3 without bound.
+
+*Why `maxUploadBandwidthMbps`:* a 200 GB nightly upload must not saturate live user traffic.
+
+In a topology a component can be declaratively initialized from a backup:
+
+[source,yaml]
+----
+        bootstrap:
+          fromBackupTarget: backups-s3
+          sourceComponentId: pg-main
+          recoveryTargetTime: "2026-10-19T14:30:00Z"   # or latest
+----
+
+==== Migration and cutover
+
+[source,yaml]
+----
+  liveMigration:
+    supportsExternalReplicaBootstrap: true
+    supportedSources: ["aws-rds-postgres", "generic-postgres"]
+    cutoverWorkflow:
+      maxAllowedLagMs: 100
+      steps: ["verify-lag-zero", "fence-source-ro", "promote-target-primary", "switch-edge-traffic"]
+      actionId: "promote-external-replica-cutover"
+----
+
+Four steps prevent loss of the latest transactions: verify zero lag → fence source → promote target → switch traffic.
+
+==== Day-2 actions
+
+[source,yaml]
+----
+  day2Actions:
+    - id: reload-pools
+      title: "Reload connection pools"
+      category: first-aid              # first-aid | maintenance | migration-cutover | scaling
+      requiresConfirmation: true
+      cooldownSeconds: 60
+      ttlSecondsAfterFinished: 3600
+      executionType: k8s-job           # gitops-patch | k8s-job | operator-annotation
+      commandOrPatch: "kill -HUP 1"
+      scriptRef: "passport://scripts/reload-pools"
+----
+
+*Why the `actionId` allowlist:* the control plane must not send arbitrary shell commands. The control plane commits a signed request `{actionId, componentId, triggerNonce}`; the agent matches `actionId` against the locally pinned passport, checks the nonce, and executes only the built-in `commandOrPatch`.
+
+*Why `cooldownSeconds` and `ttlSecondsAfterFinished`:* double-clicking a button creates a job storm; finished Jobs without TTL clutter etcd.
+
+*Why `dedupWindowHours`:* a continuous error stream is noisy and costly; the same error signature within 6 hours is processed once.
+
+=== The topology in practice
+
+==== Project metadata and external resources
+
+[source,yaml]
+----
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: "fintech-prod"            # ^[a-z0-9-]+$
+  organization: "example-corp"
+  gitMode: byo-git                     # managed-embedded | byo-git
+
+macros:
+  jvmHeap31GbCap: "min(int(memMb * 0.5), 31744)"
+scripts:
+  verify-ledger:
+    runtime: posix-sh
+    path: scripts/verify-ledger.sh
+
+externalResources:
+  - id: legacy-rds
+    passport: external-postgres-source
+    role: migration-source             # migration-source | hybrid-bridge | backup-vault
+    endpointFqdn: "prod-db.example.rds.amazonaws.com"
+    port: 5432                         # including non-standard ports (e.g. 25060)
+    transport: wireguard-tunnel        # direct | wireguard-tunnel | mtls-gateway
+    region: "eu-central-1"
+    exportedAttributes:                # arbitrary attributes in ${exported.<key>}
+      queueUrl: "https://sqs.example/123/queue"
+      region: "eu-central-1"
+    secretRef: "sops://secrets/rds.enc.yaml"
+  - id: backups-s3
+    passport: external-s3-compatible
+    role: backup-vault
+    endpointFqdn: "s3.example.com"
+    bucket: "prod-backups"
+    transport: direct
+    secretRef: "sops://secrets/s3.enc.yaml"
+----
+
+*Why `transport`:* an external resource behind corporate NAT or with RFC1918 gray-IP overlap needs a tunnel, not raw L3.
+
+*Why `exportedAttributes`:* non-standard attributes (`queueUrl`, `topic`, `region`) do not pollute the meta-schema with cloud-specific fields — they are simply available in templates.
+
+==== Cluster: security and networking
+
+[source,yaml]
+----
+clusters:
+  - id: prod-eu-central
+    name: "Production EU-Central"
+    domain: "example.io"
+    k3sChannel: "v1.31"
+    fleetCount: 10                     # for a fleet of homogeneous edge clusters
+    maintenanceWindow: "Sun 02:00-05:00 UTC"
+    security:
+      sopsRecipients:                  # public Age keys of ALL controllers + owner key
+        - "age1examplekey1…"
+        - "age1examplekey2…"
+      implicitTelemetryLayer: true
+      imageRegistryPolicy: local-p2p-cache
+                                       # local-p2p-cache | direct | airgapped-mirror
+      registryMirrorEndpoint: "https://mirror.example.com"
+      imagePullSecretRefs:
+        - "sops://secrets/registry-pull.enc.yaml"
+      controlPlaneQuorumMode: odd-etcd # odd-etcd | witness-arbiter
+      etcdBackupTarget: backups-s3
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1                 # 1..50
+      kubeProxyReplacement: true
+      hubbleLiveMap: true
+      wireguardEncryption: true
+      mtuDiscoveryAndMssClamp: true
+      fqdnCacheMinTtlSec: 3600
+----
+
+*Why the `sopsRecipients` array:* if the first node dies, the second controller cannot decrypt Git without its key. Encryption targets all recipients at once.
+
+*Why `imageRegistryPolicy: local-p2p-cache`:* during a 20-pod failover or in an air-gapped enclave, concurrent pulls hit Docker Hub limits (429) or fail offline. A P2P cache (Spegel) shares layers over the LAN.
+
+*Why `clusterMeshId` and the CIDR formula:* IDs 1..50 deterministically allocate `Pod CIDR = 10.<100+id>.0.0/16` and `Service CIDR = 10.<200+id>.0.0/16` — non-overlapping across 50 clusters and not conflicting with the K3s default Service CIDR `10.43.0.0/16`.
+
+*Why `fqdnCacheMinTtlSec: 3600`:* clouds return DNS TTL 5–60 s while keep-alive pools live for tens of minutes; without a 1-hour floor Cilium would cut live connections.
+
+*Why `mtuDiscoveryAndMssClamp`:* WireGuard headers take 60–80 bytes from MTU; without TCP MSS clamping large packets (TLS handshake, INSERT batches) fall into an MTU black hole.
+
+*Why `controlPlaneQuorumMode: witness-arbiter`:* on a 2-node cluster two-node etcd has quorum 2 — losing either server stops the API Server. The mode adds a witness or keeps the second node `worker-only`.
+
+*Why `etcdBackupTarget`:* without embedded etcd snapshots, disk loss means manual volume rebinding and secret re-issuance.
+
+==== Nodes
+
+[source,yaml]
+----
+    nodes:
+      - id: node-bm-01
+        role: control-plane-worker      # control-plane-worker | control-plane-only | worker-only
+        pricingTier: standard-node      # micro-vps | standard-node | heavy-bare-metal
+        failureDomainZone: "fsn1-dc14"  # failure domain → label topology.kubernetes.io/zone
+        monthlyCostUsd: 65              # for live TCO calculation in graph tooling
+        hardware:
+          arch: amd64                   # amd64 | arm64
+          cpuCores: 16
+          memoryMb: 65536
+          systemReservedMb: 1280        # system RAM tax
+          kernelSlabReservePercent: 3
+          systemDiskReservedGb: 40      # OS, logs, image cache
+          lvmSnapshotReservePercent: 10 # VG extent reserve for CoW snapshots
+          accelerators:
+            - { resourceClass: "nvidia.com/gpu", count: 1, memoryGb: 24 }
+          disks:
+            - { name: "nvme0n1", tier: nvme-local, sizeGb: 1000 }
+----
+
+*Why reserves are explicit:* without `systemReservedMb` tools would treat all RAM as pod-available — the node OOMs. Without `systemDiskReservedGb` (30–50 GB for OS/cache) kubelet sets `DiskPressure` and evicts pods. Without `lvmSnapshotReservePercent` `restic-lvm-snapshot` fails `Insufficient free space in volume group` and nightly backups silently die.
+
+*Why `failureDomainZone`:* without a failure domain on the node, `podAntiAffinity: hard-per-zone` cannot be checked before deploy.
+
+Disk budget invariant enforced from the capacity model:
+
+[source,text]
+----
+sum(allocatedStorageGb) <= disk.sizeGb * (1 - lvmSnapshotReservePercent/100) - systemDiskReservedGb
+----
+
+==== Load balancers
+
+[source,yaml]
+----
+    loadBalancers:
+      - id: edge-cloudflare
+        layer: edge-proxy               # edge-proxy | l7-gateway | l4-balancer
+        provider: cloudflare            # arbitrary provider identifier
+      - id: main-l7
+        layer: l7-gateway
+        provider: cilium-envoy
+        upstreamEdge: edge-cloudflare
+        trustedProxySource: "cloudflare"  # or a list of CIDRs
+        http3Quic: true
+        tls: letsencrypt-dns01-wildcard
+                                       # letsencrypt-auto | letsencrypt-dns01-wildcard |
+                                       # letsencrypt-http01 | custom-secret | none
+      - id: mqtt-l4
+        layer: l4-balancer
+        provider: cilium-l4-bgp
+        forwardingMode: ebpf-dsr-maglev   # ebpf-dsr-maglev | snat
+        floatingIpRef: "fip-01"
+        proxyProtocolV2: true
+----
+
+*Why `trustedProxySource`:* without a proxy allowlist the `X-Forwarded-For` header can be spoofed by a direct packet to the node.
+
+*Why `forwardingMode: ebpf-dsr-maglev`:* ordinary L4 SNAT hides the real client/sensor IP; DSR preserves it at the eBPF layer.
+
+*Why `letsencrypt-dns01-wildcard`:* per-subdomain HTTP-01 certs hit rate limits, are blocked by edge proxying, and publish private admin panels in Certificate Transparency.
+
+==== Security zones and logical groups
+
+[source,yaml]
+----
+    securityZones:
+      - id: "dmz-public"
+        name: "Public perimeter"
+        color: "#EFF6FF"
+        podSecurityStandard: restricted  # restricted | baseline | privileged
+        quotaCpuCores: 16
+        quotaMemoryMb: 24576
+      - id: "core-private"
+        name: "Internal core"
+        color: "#F0FDF4"
+        podSecurityStandard: restricted
+    logicalGroups:
+      - { id: "billing-domain", title: "Billing", collapsed: false }
+----
+
+*Why `podSecurityStandard` and quotas: without them a zone is only a colored frame. PSA labels and Namespace `ResourceQuota` actually constrain a compromised pod.
+
+*Why `logicalGroups`:* with 20+ services and 50 edges the relationship graph becomes spaghetti; collapsible C4 groups and the `implicitTelemetryLayer` restore readability.
+
+==== Component instances
+
+[source,yaml]
+----
+    components:
+      - id: django-core
+        passport: stateless-app         # catalog id or path to a private passport
+        version: "5.1"
+        passportRev: 3
+        zone: dmz-public                # or inferred from the namespaces/<zone>/ path
+        group: billing-domain
+        imagePullSecretRef: "sops://secrets/vendor-registry.enc.yaml"
+        licenseSecretRef: "sops://secrets/license.enc.yaml"
+        workloadOverride:              # only when the passport has allowWorkloadOverride: true
+          image: "ghcr.io/example/django-core:5.1"
+          imageDigest: "sha256:…"
+          command: ["gunicorn", "core.wsgi:application"]
+          args: ["--bind", "0.0.0.0:8000"]
+          scheduleCron: "0 * * * *"
+          preDeployExpandCommand:
+            scriptRef: "topology://scripts/verify-ledger"
+            args: ["--strict-check"]
+        config:                        # validated against passport parameters
+          log_min_duration_statement: 200
+          data_durability: "sync-preferred"
+        topology:
+          mode: strict-ha              # standalone | degraded-ha | strict-ha | sharded-cluster
+          replicas: 4
+          committedReplicas: 3         # shard-loss protection
+          shards: 2
+          autoscaling:
+            minReplicas: 2
+            maxReplicas: 8
+            cooldownSeconds: 300
+            targetCpuPercent: 70       # or customMetric:
+            # customMetric:
+            #   query: "queue_length{queue='default'}"
+            #   targetValue: 100
+        resources: { cpuCores: 2, memoryMb: 2048 }
+        storage: { sizeGb: 100, committedSizeGb: 100, mediaTier: nvme-local }
+        egressOverride:
+          mode: allow-fqdn-whitelist
+          allowedFqdns: ["api.partner.example:8443"]
+        expose:
+          - endpoint: web
+            viaBalancer: main-l7
+            scope: public               # public | protected
+            hostname: "example.io"      # apex / external domain
+            pathPrefix: "/api/v2"
+            securityPolicy:
+              clientAuth: oidc          # none | oidc | mtls
+              corsAllowedOrigins: ["https://app.example.io"]
+              rateLimitRps: 500
+        bindings:                      # inline bindings (see below)
+          - { to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
+        backupTarget: backups-s3
+        bootstrap:
+          fromBackupTarget: backups-s3
+          sourceComponentId: pg-main
+          recoveryTargetTime: latest
+----
+
+*Why `workloadOverride` is only for base archetypes:* one `stateless-app` can serve web, worker, and beat differing only by command; swapping an operator datastore image is dangerous — there `allowWorkloadOverride: false`.
+
+*Why `committedReplicas` and `committedSizeGb`:* ratchets that forbid silently shrinking replicas and volumes below the already-created state.
+
+*Why `licenseSecretRef` is required when `requiresLicenseKey: true`:* without a sops secret binding a commercial image goes to `ImagePullBackOff` / refuses to start without a key.
+
+*Why `securityPolicy` on `expose`:* payment gateways need mTLS/CORS at the edge, not in application code.
+
+=== Bindings and data flows
+
+A binding is a typed graph edge. It can be declared centrally in `clusters[].bindings[]` or inline in `components[].bindings` (without `from` — it is derived from the file owner).
+
+[source,yaml]
+----
+bindings:
+  - from: django-core
+    to: pg-main
+    toSlot: sql-cluster
+    asRequirement: database
+    envPrefix: "CACHE_"                # CACHE_REDIS_URL instead of REDIS_URL
+    envOverrides:
+      DATABASE_URL: "${exported.uri}"
+    secretRotationEpoch: 1             # incrementing starts password rotation
+    type: service-binding              # service-binding | live-migration-replica | oidc-protection
+    deliveryGuarantee: direct          # direct | transactional-outbox
+    outboxSourceRequirement: database  # which SQL slot is the outbox source
+----
+
+*Why `envPrefix`:* with `multiBind` to two Valkey instances (`cache` and `broker`) the second edge would overwrite the first `REDIS_URL`. The `CACHE_` / `BROKER_` prefixes separate the variables.
+
+*Why `envOverrides`:* different apps on one archetype expect different names (`DATABASE_URL` vs `POSTGRES_DSN`) — override avoids a new passport.
+
+*Why `secretRotationEpoch`:* generating random passwords on every compile creates Git noise and cascading restarts. While the epoch is unchanged the secret is reused idempotently; incrementing it regenerates the password, runs `ALTER ROLE`, and smoothly reloads pools.
+
+*Why `deliveryGuarantee: transactional-outbox`:* dual-write (DB + queue) loses events when the network fails between calls. Outbox guarantees delivery; `outboxSourceRequirement` names the SQL database holding the outbox table and a light `outbox-relay` sidecar drains it to the broker.
+
+*Why `type: oidc-protection`:* an edge from an identity provider to a `scope: protected` service automatically registers an OIDC client and configures middleware.
+
+==== Typical HA application binding set
+
+[source,yaml]
+----
+      - { from: web,     to: pg-main,  toSlot: sql-cluster,   asRequirement: database, secretRotationEpoch: 1 }
+      - { from: workers, to: pg-main,  toSlot: sql-cluster,   asRequirement: database, secretRotationEpoch: 1 }
+      - { from: web,     to: ch,       toSlot: analytics-sql, asRequirement: analytics_db }
+      - { from: web,     to: valkey,    toSlot: kv-store,      asRequirement: cache,  envPrefix: "CACHE_" }
+      - { from: workers, to: valkey,    toSlot: kv-store,      asRequirement: broker, envPrefix: "CELERY_BROKER_" }
+      - { from: web,     to: sqs,       toSlot: sqs-endpoint,  asRequirement: queue,
+          deliveryGuarantee: transactional-outbox, outboxSourceRequirement: database }
+----
+
+Note: two consumers of one `pg-main` do not create two sidecars (`deduplicationScope: per-target-component`), while two different Valkey instances get distinct local ports (`deterministic-offset`).
+
+=== Availability modes in practice
+
+[cols="1,2,2,2,2", options="header"]
+|===
+| Mode | Nodes | Composition | Quorum | When to use
+
+| `standalone`
+| 1+
+| 1 replica
+| none
+| Sandbox, dev, non-critical services
+
+| `degraded-ha`
+| 2
+| 2 replicas + witness/lease
+| `witness-assisted` / fencing
+| Two-server SMB clusters, DR site
+
+| `strict-ha`
+| 3+
+| 3 replicas, 0 RPO
+| `raft-odd` / `primary-standby`
+| Production datastores, FinTech with `sync-strict`
+
+| `sharded-cluster`
+| 4+
+| N shards × 2 replicas + coordinators
+| `raft-odd`
+| Analytics, queues, horizontal growth
+|===
+
+==== Special case: synchronous replication on two nodes
+
+Hard `synchronous_standby_names = 'ANY 1 (*)'` on `degraded-ha` (1 Primary + 1 Standby) **fully blocks writes** when the only replica is lost — a two-node cluster becomes less available than a single server.
+
+Therefore the passport defines `data_durability`:
+
+* `async-fast` — asynchronous replication, minimal latency;
+* `sync-preferred` — synchronous while Standby is alive; if the replica dies the operator *self-heals* and relaxes the lock (safe for 2 nodes);
+* `sync-strict` — requires a live synchronous replica (for `strict-ha` on 3+ nodes, RPO = 0).
+
+==== Degraded HA on a minimal budget
+
+Typical profile for two inexpensive servers:
+
+[source,yaml]
+----
+      - id: pg
+        passport: postgresql
+        version: "18.0.0"
+        passportRev: 6
+        topology: { mode: degraded-ha, committedReplicas: 2 }
+        resources: { cpuCores: 2, memoryMb: 4096 }
+        storage: { sizeGb: 100, committedSizeGb: 100 }
+      - id: ch
+        passport: clickhouse
+        version: "25.3.1"
+        passportRev: 5
+        topology: { mode: degraded-ha, committedReplicas: 2 }
+        resources: { cpuCores: 4, memoryMb: 8192 }
+        storage: { sizeGb: 200, committedSizeGb: 200 }
+----
+
+The compiler will add: a ClickHouse Keeper witness (192 MB), `quorumArbiter: cloud-lease-fencing` for PostgreSQL, `systemReservedMb: 1280` deducted from each node budget, `rollingUpdateSurgePolicy: adaptive-zero-surge-on-tight-ram`, and an explicit `uiWarning` annotation for operators.
+
+=== Networking, exposure, and zero-trust
+
+.Exposure layers
+[mermaid]
+----
+flowchart LR
+    Client["Client"] --> Edge["edge-proxy<br/>Cloudflare / Fastly"]
+    Edge --> L7["l7-gateway<br/>Envoy: TLS, OIDC, CORS, HTTP/3"]
+    L7 --> App["App pod<br/>expose + gatewayTuning"]
+    Dev["IoT / MQTT"] --> L4["l4-balancer<br/>DSR Maglev + Proxy Protocol"]
+    L4 --> Broker["Broker pod"]
+----
+
+Rules the compiler guarantees automatically:
+
+* access to `kube-dns:53` under any NetworkPolicy;
+* `egressDefaultMode: graph-only` — only bound traffic leaves;
+* FQDN allowlist with IP hold (`fqdnCacheMinTtlSec`);
+* private subnet isolation under `allow-public-internet`;
+* zone matrix: `forbiddenConsumerZones` physically blocks edges from DMZ into a restricted enclave.
+
+Publishing routes:
+
+[source,yaml]
+----
+        expose:
+          - { endpoint: web, viaBalancer: main-l7, scope: public,  hostname: "example.io" }
+          - { endpoint: admin, viaBalancer: main-l7, scope: protected, subdomain: "admin" }
+          - { endpoint: api,  viaBalancer: main-l7, scope: public,  subdomain: "api",
+              pathPrefix: "/api/v2", securityPolicy: { clientAuth: oidc, rateLimitRps: 200 } }
+----
+
+=== Multi-cluster and migrations
+
+==== Cross-cluster links
+
+[source,yaml]
+----
+crossClusterLinks:
+  - id: pg-geo-dr
+    fromCluster: prod-eu-central
+    fromComponent: pg-main
+    toCluster: dr-eu-west
+    toComponent: pg-dr
+    toSlot: sql-cluster
+    relationType: active-passive-replication
+    # active-passive-replication | global-service-mesh | telemetry-and-events-uplink
+    transport: wireguard-tunnel        # wireguard-tunnel | mtls-gateway | direct
+    encryption: wireguard-mtls         # wireguard-mtls | tls-strict
+    maxBandwidthMbps: 500              # so an edge fleet does not saturate the WAN
+    rpoTargetSec: 5
+----
+
+*Why `maxBandwidthMbps` and `rpoTargetSec`:* ten stores pushing analytics must not squeeze the POS uplink; RPO is a measurable DR target.
+
+==== Common cross-cluster patterns
+
+[cols="2,3,3", options="header"]
+|===
+| Pattern | `relationType` | What is generated
+
+| Active-Passive DR
+| `active-passive-replication`
+| Tunnel replication, failover button, SOPS key exchange
+
+| Active-Active / Global Service
+| `global-service-mesh`
+| Cilium ClusterMesh, global services, local affinity
+
+| Fleet Hub-and-Spoke
+| `telemetry-and-events-uplink`
+| `fleetCount: N` homogeneous edge clusters with one uplink
+|===
+
+==== Seamless cloud exit
+
+Migration replica + four-step cutover:
+
+[source,yaml]
+----
+  # external source
+  - id: aws-legacy
+    passport: external-postgres-source
+    role: migration-source
+    endpointFqdn: "prod-db.example.rds.amazonaws.com"
+    transport: wireguard-tunnel
+    secretRef: "sops://secrets/rds.enc.yaml"
+
+  # migration binding
+  - { from: aws-legacy, to: pg-main, type: live-migration-replica }
+----
+
+Cutover steps (from passport `operations.liveMigration.cutoverWorkflow`):
+`verify-lag-zero` → `fence-source-ro` → `promote-target-primary` → `switch-edge-traffic`.
+
+=== Complex scenarios (real-world configurations)
+
+Below are condensed scenario maps used to validate the standard. Each answers “which AmiSpec fields come into play”.
+
+==== High-load SaaS / FinTech core
+
+Stack: edge → web (4 replicas) + workers (HPA 2..8) + singleton beat → PostgreSQL HA + ClickHouse HA + Valkey HA + S3 backups.
+
+Used: two native sidecars (`pgbouncer` + `chproxy`) in one pod; R/W split `5432/5433`; `sharedQuotaFormula` on HPA peak + maxSurge; `maxReplicas: 1` + `Recreate` for beat (else periodic jobs double-run); `zeroEndpoints: true` on the worker; `preDeployExpandCommand` Job; `deliveryGuarantee: transactional-outbox` for webhooks.
+
+==== AdTech RTB and event pipeline
+
+Stack: L4/BGP VIP → bidder (20 replicas, SLA < 10 ms) → Redpanda → consumer → ClickHouse Sharded + Valkey Cluster.
+
+Used: `diskExclusive: true` separates Redpanda and ClickHouse onto physical NVMe; `volumes` map (hot NVMe / cold HDD); `vm.max_map_count = 1600000`, `fs.aio-max-nr`, `ioScheduler: none`; `numaTopologyPolicy: single-numa-node`; `cpuPinning: exclusive-static` for latency-critical paths.
+
+==== Polyglot OLTP → OLAP with CDC
+
+Stack: app → PostgreSQL (OLTP) → Debezium → bus → ClickHouse (OLAP) → BI.
+
+Used: `onConsumerBindMutations` sets `wal_level: logical` and `max_replication_slots`; `max_slot_wal_keep_size` formula (15% of disk) + `emergencyBallastMb`; `maxUploadBandwidthMbps` on backups; `scope: protected` for BI.
+
+==== Autonomous enclave and air-gapped registry
+
+Stack: git + tracker + registry + CI + two independent Valkey instances.
+
+Used: `deduplicationScope` + `deterministic-offset` (ports `6379` and `16379`); `imageRegistryPolicy: airgapped-mirror` / `local-p2p-cache`; `maxBodySizeMb: 0` for image-layer pushes; `egressDefaultMode: graph-only`.
+
+==== SSO / Identity-Aware Proxy
+
+Stack: Keycloak HA → identity database → L7 with OIDC filter in front of internal services.
+
+Used: `provisioner.driver: oidc-client-job`; `type: oidc-protection` on bindings; `securityPolicy.clientAuth: oidc` on `expose`.
+
+==== Low-latency market-data processing
+
+Used: `cpuPinning: exclusive-static`, `numaTopologyPolicy: single-numa-node`, `networkQosClass: realtime-interactive`, `allowedFqdns` for exchange WebSockets, `egressDefaultMode: allow-fqdn-whitelist`.
+
+==== Search / log JVM cluster
+
+Used: heap formula `min(int(resources.memoryMb * 0.5), 31744)` (31 GB cap for compressed OOPs); `vm.max_map_count >= 262144` with `mergeStrategy: max`; `incompatiblePassportsOnSameNode` for disk monopoly.
+
+==== Legacy modernization (Strangler Fig)
+
+Stack: one domain → path routing (`/api/v2/*` → new service; `/*` → monolith).
+
+Used: `expose[].pathPrefix`; `workload.companions` (nginx + php-fpm over a UNIX socket); `configMounts` for mounted configs (`php.ini`) from sops secrets; `sessionAffinity: cookie-sticky`.
+
+==== Media streaming and object storage
+
+Used: `minNodes: 4` for Erasure Coding (solver-checked before commit); `autoscaling.customMetric` on transcode queue length; scratch volume `mediaTier: nvme-local` for ffmpeg.
+
+==== Banking enclave with hard zoning
+
+Used: three `securityZones` (`dmz-public`, `app-core`, `restricted-vault`) with `podSecurityStandard: restricted`; `forbiddenConsumerZones: ["dmz-public"]` on the secret-store passport; `clientAuth: mtls`; `tlsMode: auto-internal-ca`.
+
+==== Observability
+
+Used: `implicitTelemetryLayer: true` (monitoring edges do not clutter the relationship graph); `localAnomalyRules` (Z-score, disk regression) + `logPolicy.redactPii`; `logPolicy.redactPii`.
+
+==== Multi-cluster DR and geo-distribution
+
+Used: `crossClusterLinks`; unique `clusterMeshId` values; `sopsRecipients` per cluster; `bootstrap.fromBackupTarget` for the DR instance; `rpoTargetSec` and `maxBandwidthMbps`.
+
+==== Fleet Hub-and-Spoke
+
+Used: `fleetCount: 10` on the edge cluster; `relationType: telemetry-and-events-uplink`; local `standalone` PostgreSQL at the store + a central analytics cluster.
+
+=== Modular project layout
+
+Small projects can use a single `topology.yaml`. For teams and CODEOWNERS, CUE isomorphism switches to a directory tree without changing the schema (`ami topology split` ↔ `ami topology bundle`).
+
+[source,text]
+----
+topology/                                    # package amispec (isomorphic to a single topology.yaml)
+├── project.yaml                             # metadata, externalResources, crossClusterLinks
+├── macros/                                  # topology://macros/*
+│   └── sizing.yaml
+├── scripts/                                 # topology://scripts/*
+│   ├── verify-ledger.sh
+│   └── seed-quotas.sql
+└── clusters/
+    └── prod-eu-central/
+        ├── cluster.yaml                     # domain, security, cni, loadBalancers, zones
+        ├── nodes.yaml                       # server inventory
+        ├── canvas.layout.yaml               # Layout coordinates only (x, y, zoom) for graph visualization tools
+        └── namespaces/                      # directories = securityZones = K8s Namespace
+            ├── dmz-public/
+            │   └── django-core.yaml         # zone inferred from the path
+            └── core-private/
+                ├── pg-main.yaml
+                └── ch-analytics.yaml
+----
+
+Example self-contained component file with inline bindings:
+
+[source,yaml]
+----
+# topology/clusters/prod-eu-central/namespaces/dmz-public/django-core.yaml
+id: django-core
+passport: stateless-app
+version: "5.1"
+passportRev: 3
+workloadOverride:
+  image: "ghcr.io/example/django-core:5.1"
+  command: ["gunicorn", "core.wsgi:application"]
+  preDeployExpandCommand:
+    scriptRef: "topology://scripts/verify-ledger"
+    args: ["--strict-check"]
+topology: { mode: strict-ha, replicas: 4 }
+resources: { cpuCores: 2, memoryMb: 2048 }
+expose:
+  - { endpoint: web, viaBalancer: main-l7, scope: public, hostname: "example.io" }
+bindings:
+  - { to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
+  - { to: ch, toSlot: analytics-sql, asRequirement: analytics_db }
+  - { to: valkey, toSlot: kv-store, asRequirement: cache, envPrefix: "CACHE_" }
+----
+
+Isolated layout coordinates:
+
+[source,yaml]
+----
+# topology/clusters/prod-eu-central/canvas.layout.yaml
+apiVersion: topology.amispec.io/v1
+kind: CanvasLayout
+clusterId: prod-eu-central
+viewport: { x: 0, y: 0, zoom: 0.95 }
+groups:
+  billing-domain: { collapsed: false }
+positions:
+  django-core: { x: 200, y: 120 }
+  pg-main:     { x: 680, y: 180 }
+----
+
+*Why `canvas.layout.yaml` is separate:* changing presentation coordinates must not pollute infrastructure file history in PRs or trigger manifest rebuilds.
+
+*Why `namespaces/<zone>/`:* the physical path defines zone and Namespace — Git `CODEOWNERS` can grant teams rights per directory.
+
+== Part III. Reference
+[[part-iii]]
+
+[NOTE]
+====
+Part III contains the *normative* meta-schemas (`schemas/*.cue`), field reference tables, the compilation model, and compiler invariants. Reference passports/topologies and checklists are informative illustrations of the normative schemas.
+====
+
+=== Full ComponentPassport meta-schema
+[[schema-passport]]
+
+File `schemas/component_passport.cue`, package `amispec`. Every field carries a purpose comment; behavioral “why” notes are in Part II of the guide.
+
+[source,cue]
+----
+// schemas/component_passport.cue
+package amispec
+
+// Polymorphic kernel parameter (sysctl / sysfs) with profile merge strategy
+#TunableValue: {
+	value:         int | string | bool
+	mergeStrategy: *"max" | "min" | "exclusive-match"
+}
+
+// Typed runtime script; compiled into ConfigMap/Secret -<sha8>
+#ScriptSpec: {
+	runtime:        *"posix-sh" | "sql" | "python"
+	path?:          string
+	inline?:        string
+	timeoutSeconds: int | *300
+	mountAsSecret:  bool | *false
+}
+
+// Direct argument array or a named script reference
+#CommandOrScriptRef: [...string] | {
+	scriptRef: =~"^(passport|topology)://scripts/[a-zA-Z0-9_.-]+$"
+	args?:     [...string]
+}
+
+// Health probe: http | tcp | grpc | exec
+#ProbeSpec: {
+	type:                *"http" | "tcp" | "grpc" | "exec"
+	scheme?:             *"HTTP" | "HTTPS"
+	path?:               string
+	port?:               int
+	command?:            #CommandOrScriptRef
+	localProcessOnly?:   bool | *true
+	checkLocalSidecars?: bool | *true
+	failureThreshold:    int | *3
+	periodSeconds:       int | *10
+	timeoutSeconds:      int | *3
+}
+
+// Allowed Linux/CSI mount flags (closed set; typos fail at validation).
+// Dangerous flags (`suid`, `exec`, `dev`, `user`) are intentionally excluded.
+#MountFlag:
+	"noatime" | "nodiratime" | "relatime" | "strictatime" | "lazytime" |
+	"sync" | "dirsync" | "async" |
+	"ro" | "rw" |
+	"discard" | "nodiscard" |
+	"noexec" | "nosuid" | "nodev" |
+	"norecovery" | "nouuid" | "nobarrier" | "barrier"
+
+// Storage volume specification
+#VolumeSpec: {
+	mountPath:        string
+	minSizeGb:        int
+	defaultSizeGb:    int
+	resizePolicy:     *"expand-only-monotonic" | "immutable"
+	deletionPolicy:   *"retain" | "delete"
+	nodeLossRecovery: *"rehydrate-from-backup" | "reseed-from-peer" | "manual-wait"
+	mediaTier:        *"nvme-local" | "ssd-network" | "hdd-bulk" | "ram-tmpfs"
+	diskExclusive:    bool | *false
+	lvmOptions: {
+		provisioner:        *"topolvm-nvme" | "local-path" | "external-csi"
+		volumeBindingMode:  *"WaitForFirstConsumer" | "Immediate"
+		mountFlags:         [...#MountFlag] | *["noatime", "nodiratime"]
+		filesystem:         *"xfs" | "ext4"
+		emergencyBallastMb: int | *1024
+	}
+}
+
+#ComponentPassport: {
+	apiVersion: "catalog.amispec.io/v1"
+	kind:       "ComponentPassport"
+
+	// 1. Metadata, distribution, visualization
+	metadata: {
+		id:          =~"^[a-z0-9-]+$"
+		name:        string
+		version:     string
+		passportRev: int & >=1
+		category:    "database" | "analytics" | "cache" | "message-queue" | "application" | "ai-ml" | "gateway" | "observability" | "storage" | "security" | "external"
+		archetype:   "stateless-app" | "stateful-service" | "operator-cluster" | "edge-gateway" | "external-bridge" | "scheduled-job"
+
+		distribution: {
+			tier:    *"open-core" | "private-custom"
+			license: string | *"Apache-2.0"
+			vendor?: {
+				name:               string
+				requiresLicenseKey: bool | *false
+			}
+		}
+
+		canvasUI: {
+			icon:              string
+			accentColor:       =~"^#[0-9a-fA-F]{6}$"
+			nodeShape:         *"standard-card" | "database-cylinder" | "queue-pipe" | "gateway-shield" | "external-cloud"
+			badges?:           [...string]
+			cardPinnedFields?: [...string]
+			quickControls?: [...{
+				field:   string
+				label:   string
+				control: "select" | "slider" | "toggle" | "number"
+			}]
+		}
+	}
+
+	// 2. User parameters (config contract for tooling)
+	parameters?: [ParamKey=string]: {
+		label:       string
+		type:        "string" | "int" | "number" | "bool" | "enum" | "string-list" | "secret-ref"
+		default?:    string | int | number | bool | [...string]
+		enumValues?: [...string]
+		min?:        number
+		max?:        number
+		visibleWhen?: string
+		targetPath?: string
+		applyImpact: *"pod-restart" | "hot-reload" | "rolling-switchover" | "immutable"
+		uiControl?:  *"input" | "number" | "slider" | "select" | "toggle" | "tags"
+	}
+
+	// 2b. CEL compile-time macros and runtime scripts
+	macros?: [MacroName=string]: string
+	scripts?: [ScriptName=string]: #ScriptSpec
+
+	// 3. Topology modes, quorums, PDB
+	topologyModes: [ModeName=string]: {
+		description:     string
+		minNodes:        int & >=1
+		replicas:        int | string
+		maxReplicas?:    int
+		scaleDownPolicy: *"safe-drain-required" | "immediate"
+		quorumType?:     "none" | "raft-odd" | "primary-standby" | "witness-assisted"
+		quorumArbiter?:  "none" | "witness-pod" | "cloud-lease-fencing"
+		witnessComponent?: {
+			enabled:       bool
+			replicas:      int & >=1 | *1
+			image:         string
+			cpuMillicores: int & <=1000 | *100
+			memoryMb:      int & <=512
+			placement:     *"control-plane-or-third-fault-domain" | "dedicated-per-node"
+		}
+		disruptionBudget: {
+			maxUnavailable: int | string | *1
+			updateStrategy: *"rolling" | "primary-last" | "recreate"
+		}
+		podAntiAffinity: *"soft" | "spread-skew-1" | "hard-per-node" | "hard-per-zone" | "hard-per-disk"
+		uiWarning?:      string
+	}
+
+	// 4. Workload engine
+	workload: {
+		engine:                "k8s-deployment" | "k8s-statefulset" | "k8s-daemonset" | "k8s-cronjob" | "flux-helm-release" | "operator-crd"
+		allowWorkloadOverride: bool | *false
+		peerDiscovery?:        *"none" | "headless-early-dns"
+		priorityClass: *"auto-by-archetype" | "system-critical" | "stateful-core" | "stateless-web" | "background-batch"
+
+		schedule?: {
+			cron:              string
+			concurrencyPolicy: *"Forbid" | "Replace" | "Allow"
+			timeoutSeconds?:   int | *3600
+		}
+
+		container?: {
+			image:                  string
+			imageDigest?:           =~"^sha256:[a-f0-9]{64}$"
+			pullSecretRequired:     bool | *false
+			readOnlyRootFilesystem: bool | *true
+			securityContext?: {
+				runAsNonRoot: bool | *true
+				runAsUser:    int | *10001
+				fsGroup:      int | *10001
+			}
+			command?:      [...string]
+			args?:         [...string]
+			zeroEndpoints: bool | *false
+		}
+
+		companions?: [...{
+			name:         string
+			image:        string
+			imageDigest?: =~"^sha256:[a-f0-9]{64}$"
+			ports?:       [...int]
+			command?:     [...string]
+			args?:        [...string]
+			memoryMb:     int
+			cpuCores:     number
+			mountPaths?:  [...string]
+		}]
+
+		probes?: {
+			startup?:   #ProbeSpec & {failureThreshold: int | *30, periodSeconds: int | *2}
+			liveness?:  #ProbeSpec & {localProcessOnly: true}
+			readiness?: #ProbeSpec & {checkLocalSidecars: bool | *true, periodSeconds: int | *5}
+		}
+
+		lifecycle?: {
+			preDeployExpandCommand?:    #CommandOrScriptRef
+			postDeployContractCommand?: #CommandOrScriptRef
+			preScaleDownDrainCommand?:  #CommandOrScriptRef
+			jobTimeoutSec:              int | *600
+			jobBackoffLimit:            int | *3
+			rollingUpdateSurgePolicy:   *"adaptive-zero-surge-on-tight-ram" | "strict-surge"
+			preStopSleepSec:            int | *5
+			gracefulStopTimeoutSec:     int | *35
+		}
+
+		helmSpec?: {
+			repository:      string
+			chart:           string
+			version:         string
+			chartDigest?:    =~"^sha256:[a-f0-9]{64}$"
+			valuesTemplate?: string
+		}
+
+		operatorSpec?: {
+			operatorHelmChart: string
+			operatorVersion:   string
+			crdApiVersion:     string
+			crdKind:           string
+			manifestTemplate:  string
+		}
+
+		configFormulas?: [ParamName=string]: {
+			cel:         string
+			unit?:       "MB" | "GB" | "bytes" | "count" | "string"
+			targetPath:  string
+			applyImpact: *"hot-reload" | "rolling-switchover" | "pod-restart"
+			description: string
+		}
+
+		configMounts?: [...{
+			name:           string
+			mountPath:      string
+			subPath?:       string
+			fromSecret:     bool | *true
+			reloadStrategy: *"pod-restart" | "hot-inotify" | "sighup"
+		}]
+	}
+
+	// 5. Interfaces, client contract, provisioner
+	interfaces: {
+		egressDefaultMode: *"graph-only" | "allow-public-internet" | "allow-fqdn-whitelist"
+		allowedFqdns?: [...string]
+
+		endpoints: [...{
+			name:              string
+			protocol:          "http" | "grpc" | "tcp" | "udp" | "tcp-udp"
+			tlsMode?:          *"none" | "auto-internal-ca" | "self-signed-upstream"
+			containerPort:     int & >=1 & <=65535
+			path?:             string
+			role:              "ui" | "api" | "management" | "telemetry" | "datastore" | "event-stream" | "generic"
+			defaultScope:      "public" | "protected" | "cluster-private" | "telemetry"
+			defaultSubdomain?: string
+			gatewayTuning?: {
+				streaming?:                "none" | "websocket" | "sse" | "grpc-bidi"
+				sessionAffinity?:          *"none" | "client-ip" | "cookie-sticky"
+				maxBodySizeMb?:            int
+				requestHeadersTimeoutSec?: int | *10
+				timeoutSeconds?:           int | *30
+				rateLimitRps?:             int
+				proxyProtocolV2?:          bool
+			}
+			routes?: [...{
+				path:  string
+				role:  "ui" | "api" | "management" | "telemetry"
+				scope: "public" | "protected" | "cluster-private" | "telemetry"
+			}]
+		}]
+
+		provides: [...{
+			slot:       string
+			capability: string
+			dialect?:   string
+			version:    string
+
+			clientContract?: {
+				injectWhenModes: [...string]
+				sidecar: {
+					name:                   string
+					image:                  string
+					injectionTarget:        *"k8s-native-init-restart-always" | "standard-container"
+					deduplicationScope:     *"per-target-component" | "per-binding"
+					portAllocationStrategy: *"deterministic-offset" | "static"
+					sharedQuotaFormula?:    string
+					settings?: [string]:    string | int | bool
+					listeners: [...{
+						name:          string
+						baseLocalPort: int & >=1024 & <=65535
+						targetRole:    "primary-rw" | "replicas-ro" | "all-healthy"
+					}]
+					resources: {
+						cpuMillicores: int & <=200
+						memoryMb:      int & <=128
+					}
+					healthcheckIntervalSec: int | *1
+					preStopDrainDelaySec:   int | *5
+					configTemplate:         string
+				}
+				exportedTokens: [TokenName=string]: string
+			}
+
+			provisioner?: {
+				driver:      string
+				image:       string
+				template?:   string
+				scriptRef?:  =~"^(passport|topology)://scripts/[a-zA-Z0-9_.-]+$"
+				quotas?:     [string]: number | string
+				parameters?: [string]: string | int | bool
+			}
+
+			onConsumerBindMutations?: {
+				setConfig?: [string]: string | int | bool
+			}
+		}]
+
+		requires: [SlotName=string]: {
+			capability:         string
+			optional:           bool | *false
+			multiBind:          bool | *false
+			dependencyStage:    *"infrastructure-ready" | "runtime-parallel"
+			versionConstraint?: string
+			mountAsFilesPath?:  string
+			envMapping: [EnvVar=string]: string
+		}
+	}
+
+	// 6. Hardware, storage, kernel
+	hardwareAndKernel: {
+		resources: {
+			supportedArchitectures: [...("amd64" | "arm64")] | *["amd64", "arm64"]
+			minCpuCores:            number
+			minMemoryMb:            int
+			recommendedMemoryMb:    int
+			ephemeralStorageMb:     int | *2048
+			shmSizeMb?:             int
+			oomSafetyMarginPercent: int & >=5 & <=50 | *15
+			numaTopologyPolicy?:    *"best-effort" | "single-numa-node"
+			networkQosClass:        *"realtime-interactive" | "throughput-data" | "background-bulk"
+			cpuLimitPolicy: *"burstable-no-limit" | "hard-cfs-limit"
+			verticalScalePolicy?: {
+				cpu:    *"in-place" | "pod-restart"
+				memory: *"in-place-grow-only" | "pod-restart"
+			}
+			accelerators?: [...{
+				resourceClass: string
+				count:         int & >=1
+				minMemoryGb?:  int
+			}]
+			cpuPinning?: "shared" | "exclusive-static"
+		}
+
+		storage?: #VolumeSpec
+		volumes?: [VolumeName=string]: #VolumeSpec
+
+		kernelTuning?: {
+			priority:        int & >=1 & <=1000
+			maxClockSkewMs?: int | *50
+			kernelModules?:  [...string]
+			sysctl?:         [Param=string]: #TunableValue
+			sysfs?:          [Param=string]: #TunableValue
+			ulimits?:        [LimitName=string]: int | "unlimited"
+		}
+
+		constraints?: {
+			incompatiblePassportsOnSameNode?: [...string]
+			allowedSecurityZones?:            [...string]
+			forbiddenConsumerZones?:          [...string]
+		}
+	}
+
+	// 7. Operations
+	operations: {
+		observability: {
+			scrapeEndpoint?:       string
+			scrapeInterval:        string | *"30s"
+			grafanaDashboardJson?: string
+			logPolicy?: {
+				maxRateLinesPerSec: int | *1000
+				redactPii:          bool | *true
+			}
+			localAnomalyRules?: [...{
+				metric:      string
+				algorithm:   "z-score-3sigma" | "linear-regression-disk-full" | "static-threshold"
+				threshold?:  string
+				forDuration: string | *"5m"
+			}]
+		}
+
+		backup?: {
+			mode:                   *"operator-managed" | "sidecar-stream" | "volume-snapshot-job" | "custom-job"
+			driver:                 string
+			versionCoupling:        *"match-workload-major" | "pinned"
+			targetReplicaRole:      *"prefer-standby" | "primary-only"
+			maxUploadBandwidthMbps: int | *250
+			retentionDays:          int | *30
+			pitrEnabled:            bool | *false
+			defaultCron:            string | *"0 2 * * *"
+			verifyRestoreJob:       bool | *true
+		}
+
+		liveMigration?: {
+			supportsExternalReplicaBootstrap: bool
+			supportedSources: [...string]
+			cutoverWorkflow: {
+				maxAllowedLagMs: int | *100
+				steps:           [...string]
+				actionId:        string
+			}
+		}
+
+
+		day2Actions?: [...{
+			id:                      string
+			title:                   string
+			category:                "first-aid" | "maintenance" | "migration-cutover" | "scaling"
+			requiresConfirmation:    bool | *true
+			cooldownSeconds:         int | *60
+			ttlSecondsAfterFinished: int | *3600
+			executionType:           "gitops-patch" | "k8s-job" | "operator-annotation"
+			commandOrPatch?:         string
+			scriptRef?:              =~"^(passport|topology)://scripts/[a-zA-Z0-9_.-]+$"
+		}]
+	}
+}
+----
+
+=== Full TopologyBlueprint meta-schema
+[[schema-topology]]
+
+File `schemas/topology_spec.cue`, package `amispec`.
+
+[source,cue]
+----
+// schemas/topology_spec.cue
+package amispec
+
+import "list"
+
+#VolumeTopologyOverride: {
+	sizeGb:          int
+	committedSizeGb?: int
+	mediaTier:       *"nvme-local" | "ssd-network" | "hdd-bulk" | "ram-tmpfs"
+}
+
+// Universal binding specification (central or inline)
+#BindingSpec: {
+	// from is required in clusters[].bindings[]; in components[].bindings it is inferred from the owner
+	from?:                    string
+	to:                       string
+	toSlot?:                  string
+	asRequirement?:           string
+	envPrefix?:               string
+	envOverrides?:            [string]: string
+	secretRotationEpoch?:     int & >=1 | *1
+	type?:                    *"service-binding" | "live-migration-replica" | "oidc-protection"
+	deliveryGuarantee?:       *"direct" | "transactional-outbox"
+	outboxSourceRequirement?: string | *"database"
+}
+
+#TopologyBlueprint: {
+	apiVersion: "topology.amispec.io/v1"
+	kind:       "TopologyBlueprint"
+
+	metadata: {
+		projectId:    =~"^[a-z0-9-]+$"
+		organization: string
+		gitMode:      *"managed-embedded" | "byo-git"
+	}
+
+	macros?:  [MacroName=string]: string
+	scripts?: [ScriptName=string]: #ScriptSpec
+
+	externalResources?: [...{
+		id:                  =~"^[a-z0-9-]+$"
+		passport:            string
+		role:                "migration-source" | "hybrid-bridge" | "backup-vault"
+		endpointFqdn:        string
+		port?:               int & >=1 & <=65535
+		transport:           *"direct" | "wireguard-tunnel" | "mtls-gateway"
+		region?:             string
+		bucket?:             string
+		exportedAttributes?: [string]: string | int | bool
+		secretRef:           =~"^sops://.*$"
+		canvas?:             {x: number, y: number}
+	}]
+
+	// Non-empty cluster list: a topology without clusters is meaningless
+	clusters: [...{
+		id:                 =~"^[a-z0-9-]+$"
+		name:               string
+		domain:             string
+		k3sChannel:         string | *"v1.31"
+		fleetCount?:        int & >=1
+		maintenanceWindow?: string
+
+		security: {
+			// Non-empty list of public Age keys of all controllers + owner key
+			sopsRecipients: [...=~"^age1[a-z0-9]+$"] & list.MinItems(1)
+			implicitTelemetryLayer: bool | *true
+			imageRegistryPolicy:     *"local-p2p-cache" | "direct" | "airgapped-mirror"
+			registryMirrorEndpoint?: string
+			imagePullSecretRefs?: [...=~"^sops://.*$"]
+			controlPlaneQuorumMode?: *"odd-etcd" | "witness-arbiter"
+			etcdBackupTarget?: string
+		}
+
+		cni: {
+			engine:                  "cilium-ebpf"
+			clusterMeshId:           int & >=1 & <=50
+			kubeProxyReplacement:    true
+			hubbleLiveMap:           bool | *true
+			wireguardEncryption:     bool | *true
+			mtuDiscoveryAndMssClamp: bool | *true
+			fqdnCacheMinTtlSec:      int | *3600
+		}
+
+		nodes: [...{
+			id:                 string
+			role:               "control-plane-worker" | "control-plane-only" | "worker-only"
+			pricingTier:        "micro-vps" | "standard-node" | "heavy-bare-metal"
+			failureDomainZone?: string
+			monthlyCostUsd?:    number
+			hardware: {
+				arch:                      *"amd64" | "arm64"
+				cpuCores:                  number
+				memoryMb:                  int
+				systemReservedMb:          int | *1280
+				kernelSlabReservePercent:  int | *3
+				systemDiskReservedGb:      int | *40
+				lvmSnapshotReservePercent: int | *10
+				accelerators?: [...{
+					resourceClass: string
+					count:         int
+					memoryGb?:     int
+				}]
+				disks: [...{
+					name:   string
+					tier:   "nvme-local" | "ssd-network" | "hdd-bulk"
+					sizeGb: int
+				}]
+			}
+		}]
+
+		loadBalancers: [...{
+			id:                  string
+			layer:               "edge-proxy" | "l7-gateway" | "l4-balancer"
+			provider:            string
+			upstreamEdge?:       string
+			trustedProxySource?: string | [...string]
+			forwardingMode?:     *"ebpf-dsr-maglev" | "snat"
+			floatingIpRef?:      string
+			proxyProtocolV2?:    bool
+			http3Quic?:          bool | *true
+			tls?:                *"letsencrypt-auto" | "letsencrypt-dns01-wildcard" | "letsencrypt-http01" | "custom-secret" | "none"
+		}]
+
+		securityZones?: [...{
+			id:                   string
+			name:                 string
+			color:                string
+			podSecurityStandard?: *"restricted" | "baseline" | "privileged"
+			quotaCpuCores?:       number
+			quotaMemoryMb?:       int
+		}]
+
+		logicalGroups?: [...{
+			id:        string
+			title:     string
+			collapsed: bool | *false
+		}]
+
+		components: [...{
+			id:                 =~"^[a-z0-9-]+$"
+			passport:           string
+			version:            string
+			passportRev:        int & >=1
+			zone?:              string
+			group?:             string
+			imagePullSecretRef?: =~"^sops://.*$"
+			licenseSecretRef?:   =~"^sops://.*$"
+
+			workloadOverride?: {
+				image?:                     string
+				imageDigest?:               =~"^sha256:[a-f0-9]{64}$"
+				command?:                   [...string]
+				args?:                      [...string]
+				scheduleCron?:              string
+				preDeployExpandCommand?:    #CommandOrScriptRef
+				postDeployContractCommand?: #CommandOrScriptRef
+				preScaleDownDrainCommand?:  #CommandOrScriptRef
+			}
+
+			config?: [ParamKey=string]: string | int | number | bool | [...string]
+
+			topology: {
+				mode:               "standalone" | "degraded-ha" | "strict-ha" | "sharded-cluster"
+				replicas?:          int
+				committedReplicas?: int
+				shards?:            int
+				autoscaling?: {
+					minReplicas:       int & >=1
+					maxReplicas:       int & >=1
+					cooldownSeconds?:  int | *300
+					targetCpuPercent?: int & >=10 & <=95
+					customMetric?: {
+						query:       string
+						targetValue: number
+					}
+				}
+			}
+
+			resources: {
+				cpuCores: number & >0
+				memoryMb: int & >=64
+			}
+
+			storage?: #VolumeTopologyOverride
+			volumes?: [VolumeName=string]: #VolumeTopologyOverride
+
+			egressOverride?: {
+				mode:          "graph-only" | "allow-public-internet" | "allow-fqdn-whitelist"
+				allowedFqdns?: [...string]
+			}
+
+			expose?: [...{
+				endpoint:    string
+				viaBalancer: string
+				scope:       "public" | "protected"
+				subdomain?:  string
+				hostname?:   string
+				pathPrefix?: string
+				securityPolicy?: {
+					clientAuth?:         *"none" | "oidc" | "mtls"
+					corsAllowedOrigins?: [...string]
+					rateLimitRps?:       int
+				}
+			}]
+
+			bindings?: [...#BindingSpec]
+
+			backupTarget?: string
+			bootstrap?: {
+				fromBackupTarget:    string
+				sourceComponentId?:  string
+				recoveryTargetTime?: *"latest" | string
+			}
+			canvas?: {x: number, y: number}
+		}]
+
+		bindings?: [...(#BindingSpec & {
+			from: string
+		})]
+	}] & list.MinItems(1)
+
+	crossClusterLinks?: [...{
+		id:                string
+		fromCluster:       string
+		fromComponent:     string
+		toCluster:         string
+		toComponent:       string
+		toSlot?:           string
+		relationType:      "active-passive-replication" | "global-service-mesh" | "telemetry-and-events-uplink"
+		transport:         *"wireguard-tunnel" | "mtls-gateway" | "direct"
+		encryption:        *"wireguard-mtls" | "tls-strict"
+		maxBandwidthMbps?: int
+		rpoTargetSec?:     int
+	}]
+}
+
+// Isolated layout geometry (canvas.layout.yaml) for relationship visualization tools.
+// Visual layer: does not affect K8s manifest compilation.
+#CanvasLayout: {
+	apiVersion: "topology.amispec.io/v1"
+	kind:       "CanvasLayout"
+	clusterId:  =~"^[a-z0-9-]+$"
+	viewport?: {
+		x:    number
+		y:    number
+		zoom: number & >0
+	}
+	groups?: [GroupId=string]: {
+		collapsed: bool | *false
+	}
+	positions?: [ComponentId=string]: {
+		x: number
+		y: number
+	}
+}
+----
+
+=== Reference passport: PostgreSQL
+
+Full working reference passport for `postgresql` (CloudNativePG + PgBouncer R/W Split). Serves as a model for datastore passport authors.
+
+[source,yaml]
+----
+apiVersion: catalog.amispec.io/v1
+kind: ComponentPassport
+metadata:
+  id: postgresql
+  name: "PostgreSQL HA (CloudNativePG)"
+  version: "18.0.0"
+  passportRev: 6
+  category: database
+  archetype: operator-cluster
+  distribution:
+    tier: open-core
+    license: Apache-2.0
+  canvasUI:
+    icon: "postgres-elephant"
+    accentColor: "#336791"
+    nodeShape: database-cylinder
+    badges: ["CNPG HA", "PgBouncer R/W Split", "NVMe Tuned"]
+    quickControls:
+      - { field: "topology.mode", label: "Availability mode", control: "select" }
+      - { field: "storage.sizeGb", label: "NVMe size (GB)", control: "slider" }
+      - { field: "resources.memoryMb", label: "RAM limit (MB)", control: "slider" }
+
+parameters:
+  extensions:
+    label: "PostgreSQL extensions"
+    type: string-list
+    default: ["pg_stat_statements"]
+    targetPath: "spec.bootstrap.initdb.postInitApplicationSQL"
+    applyImpact: hot-reload
+    uiControl: tags
+  log_min_duration_statement:
+    label: "Slow-query log threshold (ms)"
+    type: int
+    default: 250
+    targetPath: "spec.postgresql.parameters.log_min_duration_statement"
+    applyImpact: hot-reload
+    uiControl: number
+  data_durability:
+    label: "Synchronous replication guarantee (RPO = 0)"
+    type: enum
+    enumValues: ["async-fast", "sync-preferred", "sync-strict"]
+    default: "async-fast"
+    targetPath: "spec.postgresql.synchronous.dataDurability"
+    applyImpact: hot-reload
+    uiControl: select
+
+topologyModes:
+  standalone:
+    description: "1 node (sandbox and micro projects)"
+    minNodes: 1
+    replicas: 1
+    quorumType: none
+    quorumArbiter: none
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: soft
+
+  degraded-ha:
+    description: "2 nodes Primary + Standby with Split-Brain protection"
+    minNodes: 2
+    replicas: 2
+    quorumType: primary-standby
+    quorumArbiter: cloud-lease-fencing
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: primary-last }
+    podAntiAffinity: hard-per-node
+    uiWarning: "2-node mode: survives loss of 1 server. Split-Brain protection via Lease Fencing."
+
+  strict-ha:
+    description: "3+ nodes with automatic quorum and RPO = 0"
+    minNodes: 3
+    replicas: 3
+    quorumType: primary-standby
+    quorumArbiter: none
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: primary-last }
+    podAntiAffinity: hard-per-node
+
+workload:
+  engine: operator-crd
+  operatorSpec:
+    operatorHelmChart: "cloudnative-pg/cloudnative-pg"
+    operatorVersion: "0.23.0"
+    crdApiVersion: "postgresql.cnpg.io/v1"
+    crdKind: "Cluster"
+    manifestTemplate: "templates/cnpg-cluster.yaml.j2"
+
+  configFormulas:
+    shared_buffers:
+      cel: "string(int(resources.memoryMb * 0.25)) + 'MB'"
+      targetPath: "spec.postgresql.parameters.shared_buffers"
+      applyImpact: rolling-switchover
+      description: "25% of the container memory limit"
+    effective_cache_size:
+      cel: "string(int(resources.memoryMb * 0.65)) + 'MB'"
+      targetPath: "spec.postgresql.parameters.effective_cache_size"
+      applyImpact: hot-reload
+      description: "65% of RAM limit for the page cache"
+    max_connections:
+      cel: "string(max(100, min(500, int(resources.memoryMb / 16))))"
+      targetPath: "spec.postgresql.parameters.max_connections"
+      applyImpact: rolling-switchover
+      description: "Connection limit scales with RAM"
+    work_mem:
+      cel: "string(max(4, int((resources.memoryMb * 0.20) / max(100, min(500, int(resources.memoryMb / 16)))))) + 'MB'"
+      targetPath: "spec.postgresql.parameters.work_mem"
+      applyImpact: hot-reload
+      description: "Peak (max_connections * work_mem) does not cause OOM-Kill"
+    max_slot_wal_keep_size:
+      cel: "string(int(storage.sizeGb * 1024 * 0.15)) + 'MB'"
+      targetPath: "spec.postgresql.parameters.max_slot_wal_keep_size"
+      applyImpact: hot-reload
+      description: "WAL cap (15% of disk) if a CDC subscriber stalls"
+
+interfaces:
+  egressDefaultMode: graph-only
+  endpoints:
+    - name: sql
+      protocol: tcp
+      containerPort: 5432
+      role: datastore
+      defaultScope: cluster-private
+    - name: metrics
+      protocol: http
+      containerPort: 9187
+      path: /metrics
+      role: telemetry
+      defaultScope: telemetry
+
+  provides:
+    - slot: sql-cluster
+      capability: postgres-sql
+      dialect: postgresql
+      version: "18.0.0"
+      clientContract:
+        injectWhenModes: ["degraded-ha", "strict-ha"]
+        sidecar:
+          name: pgbouncer-sidecar
+          image: "example/pgbouncer-ha:1.23-alpine"
+          injectionTarget: k8s-native-init-restart-always
+          deduplicationScope: per-target-component
+          portAllocationStrategy: deterministic-offset
+          sharedQuotaFormula: "max(2, int((int(configFormulas.max_connections) * 0.80) / max(1, graph.maxBoundConsumerPods)))"
+          settings:
+            poolMode: transaction
+            maxPreparedStatements: 200
+          listeners:
+            - { name: rw, baseLocalPort: 5432, targetRole: primary-rw }
+            - { name: ro, baseLocalPort: 5433, targetRole: replicas-ro }
+          resources:
+            cpuMillicores: 50
+            memoryMb: 48
+          healthcheckIntervalSec: 1
+          preStopDrainDelaySec: 5
+          configTemplate: "sidecars/pgbouncer-rw-ro.ini.j2"
+        exportedTokens:
+          host: "=${ topology.mode == 'standalone' ? service.rwDns : '127.0.0.1' }"
+          port: "=${ allocatedPorts.rw }"
+          roPort: "=${ allocatedPorts.ro }"
+          username: "=${ credentials.username }"
+          password: "=${ credentials.password }"
+          database: "=${ credentials.database }"
+          uri: "postgresql://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.rw}/${credentials.database}"
+          roUri: "postgresql://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.ro}/${credentials.database}"
+      provisioner:
+        driver: sql-job
+        image: "postgres:18-alpine"
+        template: "provisioners/init-db-user.sql.j2"
+        quotas:
+          roleConnectionQuotaPercent: 50
+        parameters:
+          defaultStatementTimeoutSec: 60
+
+    - slot: cdc-replication
+      capability: postgres-cdc-wal
+      version: "18.0.0"
+      onConsumerBindMutations:
+        setConfig:
+          "spec.postgresql.parameters.wal_level": "logical"
+          "spec.postgresql.parameters.max_wal_senders": "20"
+          "spec.postgresql.parameters.max_replication_slots": "20"
+      provisioner:
+        driver: sql-job
+        image: "postgres:18-alpine"
+        template: "provisioners/init-cdc-publication.sql.j2"
+
+  requires: {}
+
+hardwareAndKernel:
+  resources:
+    minCpuCores: 0.5
+    minMemoryMb: 512
+    recommendedMemoryMb: 4096
+    ephemeralStorageMb: 2048
+    shmSizeMb: 512
+    oomSafetyMarginPercent: 15
+    numaTopologyPolicy: single-numa-node
+    networkQosClass: throughput-data
+    cpuLimitPolicy: burstable-no-limit
+    verticalScalePolicy: { cpu: in-place, memory: in-place-grow-only }
+  storage:
+    mountPath: "/var/lib/postgresql/data"
+    minSizeGb: 10
+    defaultSizeGb: 50
+    resizePolicy: expand-only-monotonic
+    deletionPolicy: retain
+    mediaTier: nvme-local
+    diskExclusive: false
+    nodeLossRecovery: rehydrate-from-backup
+    lvmOptions:
+      provisioner: topolvm-nvme
+      volumeBindingMode: WaitForFirstConsumer
+      mountFlags: ["noatime", "nodiratime"]
+      filesystem: xfs
+      emergencyBallastMb: 1024
+
+  kernelTuning:
+    priority: 80
+    maxClockSkewMs: 50
+    sysctl:
+      vm.swappiness: { value: 1, mergeStrategy: min }
+      vm.dirty_background_ratio: { value: 3, mergeStrategy: min }
+      vm.dirty_ratio: { value: 10, mergeStrategy: min }
+      vm.max_map_count: { value: 262144, mergeStrategy: max }
+      net.core.somaxconn: { value: 32768, mergeStrategy: max }
+    sysfs:
+      transparentHugepage: { value: "never", mergeStrategy: exclusive-match }
+      ioScheduler: { value: "none", mergeStrategy: exclusive-match }
+    ulimits:
+      nofile: 262144
+
+operations:
+  observability:
+    scrapeEndpoint: metrics
+    grafanaDashboardJson: "dashboards/cnpg-overview.json"
+    logPolicy: { maxRateLinesPerSec: 1000, redactPii: true }
+    localAnomalyRules:
+      - { metric: "cnpg_pg_replication_lag", algorithm: "static-threshold", threshold: "> 30", forDuration: "5m" }
+      - { metric: "node_filesystem_avail_bytes", algorithm: "linear-regression-disk-full", threshold: "< 24h", forDuration: "15m" }
+  backup:
+    mode: operator-managed
+    driver: cnpg-barman
+    targetReplicaRole: prefer-standby
+    defaultCron: "0 1 * * *"
+    retentionDays: 30
+    pitrEnabled: true
+    verifyRestoreJob: true
+    versionCoupling: match-workload-major
+    maxUploadBandwidthMbps: 250
+  liveMigration:
+    supportsExternalReplicaBootstrap: true
+    supportedSources: ["aws-rds-postgres", "gcp-cloudsql-pg", "generic-postgres"]
+    cutoverWorkflow:
+      maxAllowedLagMs: 100
+      steps: ["verify-lag-zero", "fence-source-ro", "promote-target-primary", "switch-edge-traffic"]
+      actionId: "promote-external-replica-cutover"
+    - id: pg-wal-disk-full
+      matchPattern: "PANIC: could not write to file \"pg_wal/"
+      dedupWindowHours: 6
+      rootCauseHint: "Disk full of WAL. Release the emergency ballast so the database can start."
+      suggestedFixActionId: "release-disk-ballast"
+  day2Actions:
+    - id: reload-pgbouncer-pools
+      title: "Reload PgBouncer connection pools"
+      category: first-aid
+      requiresConfirmation: true
+      executionType: k8s-job
+      commandOrPatch: "kill -HUP 1"
+    - id: release-disk-ballast
+      title: "Emergency release of NVMe volume ballast"
+      category: first-aid
+      requiresConfirmation: true
+      executionType: k8s-job
+      commandOrPatch: "ami volume release-ballast --component=${component.id}"
+    - id: promote-external-replica-cutover
+      title: "Finish migration: safe Cutover (0 ms lag → Primary)"
+      category: migration-cutover
+      requiresConfirmation: true
+      executionType: gitops-patch
+      commandOrPatch: "spec.replica.enabled = false"
+----
+
+=== Reference passport: ClickHouse
+
+Sample analytical cluster: Keeper witness, `chproxy` sidecar, disk monopoly.
+
+[source,yaml]
+----
+apiVersion: catalog.amispec.io/v1
+kind: ComponentPassport
+metadata:
+  id: clickhouse
+  name: "ClickHouse Analytical Cluster"
+  version: "25.3.1"
+  passportRev: 5
+  category: analytics
+  archetype: operator-cluster
+  distribution:
+    tier: open-core
+    license: Apache-2.0
+  canvasUI:
+    icon: "clickhouse-bars"
+    accentColor: "#FFCC00"
+    nodeShape: database-cylinder
+    badges: ["Altinity HA", "chproxy Sidecar", "mmap Tuned"]
+    quickControls:
+      - { field: "topology.mode", label: "Cluster topology", control: "select" }
+      - { field: "topology.shards", label: "Shard count", control: "number" }
+      - { field: "storage.sizeGb", label: "NVMe per replica (GB)", control: "slider" }
+
+topologyModes:
+  standalone:
+    description: "1 node without replication"
+    minNodes: 1
+    replicas: 1
+    quorumType: none
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: soft
+
+  degraded-ha:
+    description: "2 data replicas + 1 lightweight ClickHouse Keeper (Witness)"
+    minNodes: 2
+    replicas: 2
+    quorumType: witness-assisted
+    quorumArbiter: witness-pod
+    witnessComponent:
+      enabled: true
+      replicas: 1
+      image: "clickhouse/clickhouse-keeper:25.3-alpine"
+      cpuMillicores: 100
+      memoryMb: 192
+      placement: control-plane-or-third-fault-domain
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: hard-per-node
+    uiWarning: "Keeper quorum provided by the Witness node (192 MB RAM)."
+
+  strict-ha:
+    description: "3 nodes (1 shard × 2–3 replicas + 3 Keepers)"
+    minNodes: 3
+    replicas: 3
+    quorumType: raft-odd
+    witnessComponent:
+      enabled: true
+      replicas: 3
+      image: "clickhouse/clickhouse-keeper:25.3-alpine"
+      cpuMillicores: 250
+      memoryMb: 256
+      placement: dedicated-per-node
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: hard-per-node
+
+  sharded-cluster:
+    description: "N shards × 2 replicas + 3 Keepers"
+    minNodes: 4
+    replicas: "=${ topology.shards * 2 }"
+    quorumType: raft-odd
+    witnessComponent:
+      enabled: true
+      replicas: 3
+      image: "clickhouse/clickhouse-keeper:25.3-alpine"
+      cpuMillicores: 250
+      memoryMb: 256
+      placement: dedicated-per-node
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: hard-per-disk
+
+workload:
+  engine: operator-crd
+  operatorSpec:
+    operatorHelmChart: "altinity/altinity-clickhouse-operator"
+    operatorVersion: "0.24.2"
+    crdApiVersion: "clickhouse.altinity.com/v1"
+    crdKind: "ClickHouseInstallation"
+    manifestTemplate: "templates/clickhouse-chi.yaml.j2"
+
+  configFormulas:
+    max_server_memory_usage:
+      cel: "string(int(resources.memoryMb * 0.80) * 1048576)"
+      unit: bytes
+      targetPath: "spec.configuration.settings.max_server_memory_usage"
+      applyImpact: hot-reload
+      description: "ClickHouse memory ceiling (80% of container) to avoid OOM Killer"
+    mark_cache_size:
+      cel: "string(int(resources.memoryMb * 0.10) * 1048576)"
+      unit: bytes
+      targetPath: "spec.configuration.settings.mark_cache_size"
+      applyImpact: hot-reload
+      description: "10% RAM for MergeTree mark cache"
+
+interfaces:
+  egressDefaultMode: graph-only
+  endpoints:
+    - name: http-query
+      protocol: http
+      containerPort: 8123
+      role: datastore
+      defaultScope: cluster-private
+    - name: native-tcp
+      protocol: tcp
+      containerPort: 9000
+      role: datastore
+      defaultScope: cluster-private
+    - name: metrics
+      protocol: http
+      containerPort: 9363
+      path: /metrics
+      role: telemetry
+      defaultScope: telemetry
+
+  provides:
+    - slot: analytics-sql
+      capability: clickhouse-sql
+      version: "25.3.1"
+      clientContract:
+        injectWhenModes: ["degraded-ha", "strict-ha", "sharded-cluster"]
+        sidecar:
+          name: chproxy-sidecar
+          image: "example/chproxy:1.26.0"
+          injectionTarget: k8s-native-init-restart-always
+          deduplicationScope: per-target-component
+          portAllocationStrategy: deterministic-offset
+          settings:
+            enableQueryCache: true
+          listeners:
+            - { name: default, baseLocalPort: 8123, targetRole: all-healthy }
+          resources:
+            cpuMillicores: 50
+            memoryMb: 64
+          healthcheckIntervalSec: 1
+          preStopDrainDelaySec: 5
+          configTemplate: "sidecars/chproxy-config.yml.j2"
+        exportedTokens:
+          host: "=${ topology.mode == 'standalone' ? service.httpDns : '127.0.0.1' }"
+          port: "=${ allocatedPorts.default }"
+          username: "=${ credentials.username }"
+          password: "=${ credentials.password }"
+          database: "=${ credentials.database }"
+          uri: "http://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.default}/${credentials.database}"
+      provisioner:
+        driver: sql-job
+        image: "clickhouse/clickhouse-server:25.3-alpine"
+        template: "provisioners/init-ch-cluster-db.sql.j2"
+  requires: {}
+
+hardwareAndKernel:
+  resources:
+    minCpuCores: 2.0
+    minMemoryMb: 2048
+    recommendedMemoryMb: 16384
+    ephemeralStorageMb: 4096
+    oomSafetyMarginPercent: 20
+    numaTopologyPolicy: single-numa-node
+    networkQosClass: throughput-data
+    verticalScalePolicy: { cpu: in-place, memory: in-place-grow-only }
+  storage:
+    mountPath: "/var/lib/clickhouse"
+    minSizeGb: 20
+    defaultSizeGb: 200
+    resizePolicy: expand-only-monotonic
+    deletionPolicy: retain
+    mediaTier: nvme-local
+    diskExclusive: true
+    nodeLossRecovery: rehydrate-from-backup
+    lvmOptions:
+      provisioner: topolvm-nvme
+      volumeBindingMode: WaitForFirstConsumer
+      mountFlags: ["noatime", "nodiratime"]
+      filesystem: ext4
+      emergencyBallastMb: 2048
+
+  kernelTuning:
+    priority: 100
+    maxClockSkewMs: 50
+    sysctl:
+      vm.max_map_count: { value: 1600000, mergeStrategy: max }
+      vm.swappiness: { value: 0, mergeStrategy: min }
+      vm.dirty_background_ratio: { value: 5, mergeStrategy: min }
+      vm.dirty_ratio: { value: 10, mergeStrategy: min }
+      net.core.somaxconn: { value: 65535, mergeStrategy: max }
+    sysfs:
+      transparentHugepage: { value: "never", mergeStrategy: exclusive-match }
+      ioScheduler: { value: "none", mergeStrategy: exclusive-match }
+      nrRequests: { value: 1024, mergeStrategy: max }
+    ulimits:
+      nofile: 1048576
+
+  constraints:
+    incompatiblePassportsOnSameNode: ["opensearch"]
+
+operations:
+  observability:
+    scrapeEndpoint: metrics
+    grafanaDashboardJson: "dashboards/clickhouse-cluster.json"
+  backup:
+    mode: sidecar-stream
+    driver: clickhouse-backup
+    targetReplicaRole: prefer-standby
+    defaultCron: "0 3 * * *"
+    retentionDays: 30
+    verifyRestoreJob: true
+    versionCoupling: match-workload-major
+    maxUploadBandwidthMbps: 250
+  day2Actions:
+    - id: enable-async-insert
+      title: "Enable async_insert=1 (Too Many Parts protection)"
+      category: first-aid
+      requiresConfirmation: true
+      executionType: gitops-patch
+      commandOrPatch: "spec.configuration.profiles.default.async_insert = 1"
+----
+
+=== Private passport for commercial software
+
+Sample private product passport on the `stateful-service` archetype (private spec without changing the meta-schema).
+
+[source,yaml]
+----
+# .amispec/private-specs/acme-billing.yaml
+apiVersion: catalog.amispec.io/v1
+kind: ComponentPassport
+metadata:
+  id: acme-billing-core
+  name: "Enterprise Billing Engine (Proprietary)"
+  version: "4.2.0"
+  passportRev: 1
+  category: application
+  archetype: stateful-service
+  distribution:
+    tier: private-custom
+    license: Commercial-Proprietary
+    vendor:
+      name: "Example Vendor"
+      requiresLicenseKey: true
+  canvasUI:
+    icon: "custom-stateful-cube"
+    accentColor: "#8B5CF6"
+    nodeShape: standard-card
+    badges: ["Private Spec", "NVMe LVM", "S3 Snapshots"]
+    quickControls:
+      - { field: "storage.sizeGb", label: "LVM disk (GB)", control: "number" }
+
+parameters:
+  BILLING_DEFAULT_CURRENCY:
+    label: "Default billing currency"
+    type: enum
+    enumValues: ["EUR", "USD", "GBP", "AED"]
+    default: "EUR"
+    applyImpact: pod-restart
+    uiControl: select
+
+topologyModes:
+  standalone:
+    description: "1 active instance with isolated NVMe LVM and S3 snapshots"
+    minNodes: 1
+    replicas: 1
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: recreate }
+    podAntiAffinity: soft
+
+workload:
+  engine: k8s-statefulset
+  peerDiscovery: headless-early-dns
+  priorityClass: stateful-core
+  container:
+    image: "registry.example.com/billing/engine:4.2.0"
+    imageDigest: "sha256:4b825dc642cb6eb9a060e54bf8d69288fbee49044b825dc642cb6eb9a060e54b"
+    pullSecretRequired: true
+    readOnlyRootFilesystem: true
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      fsGroup: 10001
+    zeroEndpoints: false
+  probes:
+    startup: { scheme: HTTPS, path: "/health/startup", port: 8443, failureThreshold: 30, periodSeconds: 2 }
+    liveness: { scheme: HTTPS, path: "/health/live", port: 8443, localProcessOnly: true, periodSeconds: 10 }
+    readiness: { scheme: HTTPS, path: "/health/ready", port: 8443, checkLocalSidecars: true, periodSeconds: 5 }
+  lifecycle:
+    preDeployExpandCommand: ["/usr/local/bin/acme-cli", "db-migrate", "--phase=expand"]
+    jobTimeoutSec: 600
+    jobBackoffLimit: 3
+    preStopSleepSec: 5
+    gracefulStopTimeoutSec: 35
+    rollingUpdateSurgePolicy: adaptive-zero-surge-on-tight-ram
+  configMounts:
+    - name: license-file
+      mountPath: "/etc/acme/license.key"
+      subPath: "license.key"
+      fromSecret: true
+      reloadStrategy: pod-restart
+    - name: billing-conf
+      mountPath: "/etc/acme/conf.d"
+      fromSecret: true
+      reloadStrategy: hot-inotify
+
+interfaces:
+  egressDefaultMode: allow-fqdn-whitelist
+  allowedFqdns: ["sqs.eu-central-1.amazonaws.com", "api.stripe.com", "smtp.example.com:587"]
+  endpoints:
+    - name: api
+      protocol: http
+      tlsMode: auto-internal-ca
+      containerPort: 8443
+      role: api
+      defaultScope: cluster-private
+    - name: admin-ui
+      protocol: http
+      containerPort: 9090
+      role: management
+      defaultScope: protected
+      defaultSubdomain: "billing-admin"
+    - name: metrics
+      protocol: http
+      containerPort: 9100
+      path: /metrics
+      role: telemetry
+      defaultScope: telemetry
+
+  provides:
+    - slot: billing-api
+      capability: rest-api
+      version: "4.2.0"
+
+  requires:
+    database:
+      capability: postgres-sql
+      optional: false
+      dependencyStage: infrastructure-ready
+      versionConstraint: ">=15.0.0"
+      envMapping:
+        BILLING_DB_HOST: "${exported.host}"
+        BILLING_DB_PORT: "${exported.port}"
+        BILLING_DB_RO_PORT: "${exported.roPort}"
+        BILLING_DB_USER: "${exported.username}"
+        BILLING_DB_PASS: "${exported.password}"
+        BILLING_DB_NAME: "${exported.database}"
+    cache:
+      capability: redis-kv
+      optional: false
+      dependencyStage: infrastructure-ready
+      envMapping:
+        REDIS_URL: "${exported.uri}"
+    aws_sqs_bridge:
+      capability: aws-sqs-queue
+      optional: true
+      dependencyStage: runtime-parallel
+      envMapping:
+        AWS_SQS_QUEUE_URL: "${exported.uri}"
+        AWS_REGION: "${exported.region}"
+
+hardwareAndKernel:
+  resources:
+    supportedArchitectures: ["amd64"]
+    minCpuCores: 2
+    minMemoryMb: 4096
+    recommendedMemoryMb: 8192
+    ephemeralStorageMb: 2048
+    networkQosClass: realtime-interactive
+  storage:
+    mountPath: "/var/lib/acme-billing/journals"
+    minSizeGb: 50
+    defaultSizeGb: 100
+    resizePolicy: expand-only-monotonic
+    deletionPolicy: retain
+    mediaTier: nvme-local
+    nodeLossRecovery: rehydrate-from-backup
+    lvmOptions:
+      provisioner: topolvm-nvme
+      volumeBindingMode: WaitForFirstConsumer
+      mountFlags: ["noatime"]
+      filesystem: xfs
+      emergencyBallastMb: 1024
+
+operations:
+  observability:
+    scrapeEndpoint: metrics
+    logPolicy: { maxRateLinesPerSec: 1000, redactPii: true }
+  backup:
+    mode: volume-snapshot-job
+    driver: restic-lvm-snapshot
+    defaultCron: "0 */6 * * *"
+    retentionDays: 30
+    verifyRestoreJob: true
+    versionCoupling: match-workload-major
+    maxUploadBandwidthMbps: 250
+  day2Actions:
+    - id: clear-stuck-locks
+      title: "Clear stuck billing sessions"
+      category: first-aid
+      requiresConfirmation: true
+      cooldownSeconds: 60
+      ttlSecondsAfterFinished: 3600
+      executionType: k8s-job
+      commandOrPatch: "/usr/local/bin/acme-cli locks --clear-expired"
+----
+
+=== Reference topology (multi-cluster + migration)
+
+Full `topology.yaml` example: two clusters, external resources, HA stack, migration replica, and a cross-cluster DR link.
+
+[source,yaml]
+----
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: "fintech-repatriation-prod"
+  organization: "example-corp"
+  gitMode: "byo-git"
+
+externalResources:
+  - id: aws-legacy-rds
+    passport: external-postgres-source
+    role: migration-source
+    endpointFqdn: "prod-db.c9akciq32.eu-central-1.rds.amazonaws.com"
+    port: 5432
+    transport: wireguard-tunnel
+    secretRef: "sops://secrets/aws-rds-credentials.enc.yaml"
+    canvas: { x: -320, y: 180 }
+
+  - id: aws-sqs-webhooks
+    passport: external-aws-sqs
+    role: hybrid-bridge
+    endpointFqdn: "sqs.eu-central-1.amazonaws.com"
+    transport: direct
+    region: "eu-central-1"
+    exportedAttributes:
+      uri: "https://sqs.eu-central-1.amazonaws.com/123456789012/billing-events"
+      region: "eu-central-1"
+    secretRef: "sops://secrets/aws-iam-bridge.enc.yaml"
+    canvas: { x: -320, y: 420 }
+
+  - id: client-s3-backups
+    passport: external-s3-compatible
+    role: backup-vault
+    endpointFqdn: "s3.eu-central-1.example.com"
+    transport: direct
+    bucket: "example-backups"
+    secretRef: "sops://secrets/s3-backup-keys.enc.yaml"
+    canvas: { x: 1100, y: 500 }
+
+clusters:
+  - id: prod-eu-central
+    name: "Production EU-Central"
+    domain: "example.io"
+    k3sChannel: "v1.31"
+    maintenanceWindow: "Sun 02:00-05:00 UTC"
+    security:
+      sopsRecipients:
+        - "age1examplepublickeyaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        - "age1examplepublickeybbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      implicitTelemetryLayer: true
+      imageRegistryPolicy: local-p2p-cache
+      imagePullSecretRefs:
+        - "sops://secrets/registry-pull.enc.yaml"
+      controlPlaneQuorumMode: odd-etcd
+      etcdBackupTarget: client-s3-backups
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1
+      kubeProxyReplacement: true
+      hubbleLiveMap: true
+      wireguardEncryption: true
+      mtuDiscoveryAndMssClamp: true
+      fqdnCacheMinTtlSec: 3600
+
+    nodes:
+      - id: node-bm-01
+        role: control-plane-worker
+        pricingTier: standard-node
+        failureDomainZone: "fsn1-dc14"
+        monthlyCostUsd: 65
+        hardware: { arch: amd64, cpuCores: 16, memoryMb: 65536, systemReservedMb: 1280, systemDiskReservedGb: 40, lvmSnapshotReservePercent: 10, disks: [{ name: "nvme0n1", tier: "nvme-local", sizeGb: 1000 }] }
+      - id: node-bm-02
+        role: control-plane-worker
+        pricingTier: standard-node
+        failureDomainZone: "fsn1-dc15"
+        monthlyCostUsd: 65
+        hardware: { arch: amd64, cpuCores: 16, memoryMb: 65536, systemReservedMb: 1280, systemDiskReservedGb: 40, lvmSnapshotReservePercent: 10, disks: [{ name: "nvme0n1", tier: "nvme-local", sizeGb: 1000 }] }
+      - id: node-bm-03
+        role: control-plane-worker
+        pricingTier: standard-node
+        failureDomainZone: "nbg1-dc3"
+        monthlyCostUsd: 65
+        hardware: { arch: amd64, cpuCores: 16, memoryMb: 65536, systemReservedMb: 1280, systemDiskReservedGb: 40, lvmSnapshotReservePercent: 10, disks: [{ name: "nvme0n1", tier: "nvme-local", sizeGb: 1000 }] }
+
+    loadBalancers:
+      - id: edge-cloudflare-ha
+        layer: edge-proxy
+        provider: cloudflare
+      - id: main-l7-gateway
+        layer: l7-gateway
+        provider: cilium-envoy
+        upstreamEdge: edge-cloudflare-ha
+        trustedProxySource: "cloudflare"
+        http3Quic: true
+        tls: letsencrypt-dns01-wildcard
+      - id: iot-l4-balancer
+        layer: l4-balancer
+        provider: cilium-l4-bgp
+        forwardingMode: ebpf-dsr-maglev
+        floatingIpRef: "fip-01"
+        proxyProtocolV2: true
+
+    securityZones:
+      - { id: "dmz-public", name: "Public perimeter (DMZ)", color: "#EFF6FF", podSecurityStandard: restricted, quotaCpuCores: 16, quotaMemoryMb: 24576 }
+      - { id: "core-private", name: "Internal core and datastores", color: "#F0FDF4", podSecurityStandard: restricted }
+
+    logicalGroups:
+      - { id: "billing-domain", title: "Billing domain", collapsed: false }
+
+    components:
+      - id: django-core
+        passport: stateless-app
+        version: "5.1"
+        passportRev: 3
+        zone: dmz-public
+        workloadOverride:
+          image: "ghcr.io/example/django-core:5.1"
+          command: ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]
+        topology: { mode: strict-ha, replicas: 4 }
+        resources: { cpuCores: 2, memoryMb: 2048 }
+        expose:
+          - { endpoint: web, viaBalancer: main-l7-gateway, scope: public, hostname: "example.io" }
+          - { endpoint: api, viaBalancer: main-l7-gateway, scope: public, subdomain: "api", securityPolicy: { rateLimitRps: 500 } }
+        canvas: { x: 200, y: 120 }
+
+      - id: celery-workers
+        passport: stateless-app
+        version: "5.1"
+        passportRev: 3
+        zone: core-private
+        workloadOverride:
+          image: "ghcr.io/example/django-core:5.1"
+          command: ["celery", "-A", "core", "worker", "-l", "info"]
+        topology:
+          mode: strict-ha
+          replicas: 3
+          autoscaling:
+            minReplicas: 2
+            maxReplicas: 8
+            cooldownSeconds: 300
+            customMetric: { query: "celery_queue_length{queue='default'}", targetValue: 100 }
+        resources: { cpuCores: 2, memoryMb: 2048 }
+        canvas: { x: 200, y: 320 }
+
+      - id: acme-billing
+        passport: ".amispec/private-specs/acme-billing.yaml"
+        version: "4.2.0"
+        passportRev: 1
+        zone: core-private
+        group: billing-domain
+        imagePullSecretRef: "sops://secrets/vendor-registry.enc.yaml"
+        licenseSecretRef: "sops://secrets/billing-license.enc.yaml"
+        config:
+          BILLING_DEFAULT_CURRENCY: "EUR"
+        topology: { mode: standalone }
+        resources: { cpuCores: 2, memoryMb: 4096 }
+        storage: { sizeGb: 100, committedSizeGb: 100, mediaTier: nvme-local }
+        expose:
+          - { endpoint: admin-ui, viaBalancer: main-l7-gateway, scope: protected, subdomain: "billing-admin" }
+        canvas: { x: 200, y: 500 }
+
+      - id: pg-main
+        passport: postgresql
+        version: "18.0.0"
+        passportRev: 6
+        zone: core-private
+        config:
+          extensions: ["pg_stat_statements", "pgvector"]
+          log_min_duration_statement: 200
+        topology: { mode: strict-ha, committedReplicas: 3 }
+        resources: { cpuCores: 4, memoryMb: 16384 }
+        storage: { sizeGb: 250, committedSizeGb: 250, mediaTier: nvme-local }
+        backupTarget: client-s3-backups
+        canvas: { x: 680, y: 180 }
+
+      - id: ch-analytics
+        passport: clickhouse
+        version: "25.3.1"
+        passportRev: 5
+        zone: core-private
+        topology: { mode: strict-ha, committedReplicas: 3 }
+        resources: { cpuCores: 8, memoryMb: 24576 }
+        storage: { sizeGb: 400, committedSizeGb: 400, mediaTier: nvme-local }
+        backupTarget: client-s3-backups
+        canvas: { x: 680, y: 380 }
+
+      - id: valkey-main
+        passport: valkey
+        version: "8.0.6"
+        passportRev: 2
+        zone: core-private
+        topology: { mode: strict-ha, committedReplicas: 3 }
+        resources: { cpuCores: 2, memoryMb: 4096 }
+        storage: { sizeGb: 10, committedSizeGb: 10, mediaTier: nvme-local }
+        canvas: { x: 680, y: 560 }
+
+    bindings:
+      - { from: django-core, to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
+      - { from: celery-workers, to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
+      - { from: acme-billing, to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
+      - { from: django-core, to: ch-analytics, toSlot: analytics-sql, asRequirement: analytics_db }
+      - { from: django-core, to: valkey-main, toSlot: kv-store, asRequirement: cache, envPrefix: "CACHE_" }
+      - { from: celery-workers, to: valkey-main, toSlot: kv-store, asRequirement: broker, envPrefix: "CELERY_BROKER_" }
+      - { from: acme-billing, to: valkey-main, toSlot: kv-store, asRequirement: cache }
+      - { from: django-core, to: acme-billing, toSlot: billing-api, asRequirement: billing_service }
+      - { from: aws-legacy-rds, to: pg-main, type: live-migration-replica }
+      - { from: acme-billing, to: aws-sqs-webhooks, toSlot: sqs-endpoint, asRequirement: aws_sqs_bridge, deliveryGuarantee: transactional-outbox, outboxSourceRequirement: database }
+
+  - id: dr-eu-west
+    name: "Disaster Recovery EU-West"
+    domain: "dr.example.io"
+    k3sChannel: "v1.31"
+    maintenanceWindow: "Sun 03:00-06:00 UTC"
+    security:
+      sopsRecipients:
+        - "age1examplepublickeycccccccccccccccccccccccccccccccccccccccccccc"
+      implicitTelemetryLayer: true
+      imageRegistryPolicy: local-p2p-cache
+      controlPlaneQuorumMode: witness-arbiter
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 2
+      kubeProxyReplacement: true
+      hubbleLiveMap: true
+      wireguardEncryption: true
+      fqdnCacheMinTtlSec: 3600
+    nodes:
+      - id: node-dr-01
+        role: control-plane-worker
+        pricingTier: standard-node
+        failureDomainZone: "gra-dc1"
+        monthlyCostUsd: 42
+        hardware: { arch: amd64, cpuCores: 8, memoryMb: 32768, systemReservedMb: 1280, disks: [{ name: "nvme0n1", tier: "nvme-local", sizeGb: 500 }] }
+      - id: node-dr-02
+        role: worker-only
+        pricingTier: standard-node
+        failureDomainZone: "gra-dc2"
+        monthlyCostUsd: 42
+        hardware: { arch: amd64, cpuCores: 8, memoryMb: 32768, systemReservedMb: 1280, disks: [{ name: "nvme0n1", tier: "nvme-local", sizeGb: 500 }] }
+    components:
+      - id: pg-dr-standby
+        passport: postgresql
+        version: "18.0.0"
+        passportRev: 6
+        topology: { mode: degraded-ha, committedReplicas: 2 }
+        resources: { cpuCores: 4, memoryMb: 8192 }
+        storage: { sizeGb: 250, committedSizeGb: 250, mediaTier: nvme-local }
+        bootstrap: { fromBackupTarget: client-s3-backups, sourceComponentId: pg-main, recoveryTargetTime: latest }
+        canvas: { x: 1450, y: 180 }
+
+crossClusterLinks:
+  - id: pg-geo-dr-stream
+    fromCluster: prod-eu-central
+    fromComponent: pg-main
+    toCluster: dr-eu-west
+    toComponent: pg-dr-standby
+    toSlot: sql-cluster
+    relationType: active-passive-replication
+    transport: wireguard-tunnel
+    encryption: wireguard-mtls
+    maxBandwidthMbps: 500
+    rpoTargetSec: 5
+----
+
+=== Field reference summary
+
+==== ComponentPassport: block tree
+
+[cols="2,3,4", options="header"]
+|===
+| Block | Key fields | Purpose
+
+| `metadata`
+| `id`, `version`, `passportRev`, `category`, `archetype`, `distribution`, `canvasUI` (tool presentation hints)
+| Identity, license, card appearance
+
+| `parameters`
+| `type`, `default`, `targetPath`, `applyImpact`, `visibleWhen`, `uiControl`
+| User settings contract
+
+| `macros` / `scripts`
+| `runtime`, `path`/`inline`, `timeoutSeconds`, `mountAsSecret`
+| CEL compile-time and runtime scripts
+
+| `topologyModes`
+| `minNodes`, `replicas`, `quorumType`, `quorumArbiter`, `witnessComponent`, `disruptionBudget`, `podAntiAffinity`, `scaleDownPolicy`
+| Availability profiles
+
+| `workload`
+| `engine`, `container`, `companions`, `probes`, `lifecycle`, `helmSpec`, `operatorSpec`, `configFormulas`, `configMounts`, `schedule`, `priorityClass`, `peerDiscovery`
+| How it runs and updates
+
+| `interfaces`
+| `egressDefaultMode`, `allowedFqdns`, `endpoints`, `provides` (+ `clientContract`, `provisioner`, `onConsumerBindMutations`), `requires`
+| Networking, slots, sidecars
+
+| `hardwareAndKernel`
+| `resources`, `storage`/`volumes`, `kernelTuning`, `constraints`
+| Hardware, volumes, sysctl, compatibility
+
+| `operations`
+| `observability`, `backup`, `liveMigration`, `day2Actions`
+| Monitoring, backups, migrations, service actions
+|===
+
+==== TopologyBlueprint: block tree
+
+[cols="2,3,4", options="header"]
+|===
+| Block | Key fields | Purpose
+
+| `metadata`
+| `projectId`, `organization`, `gitMode`
+| Project and Git mode
+
+| `macros` / `scripts`
+| as in the passport, `topology://` namespace
+| Project extensions
+
+| `externalResources[]`
+| `role`, `endpointFqdn`, `port`, `transport`, `exportedAttributes`, `secretRef`
+| External DB/queues/S3, hybrid bridge
+
+| `clusters[].security`
+| `sopsRecipients`, `imageRegistryPolicy`, `imagePullSecretRefs`, `controlPlaneQuorumMode`, `etcdBackupTarget`, `implicitTelemetryLayer`
+| Keys, registry, quorum, etcd backup
+
+| `clusters[].cni`
+| `clusterMeshId`, `wireguardEncryption`, `mtuDiscoveryAndMssClamp`, `fqdnCacheMinTtlSec`
+| Networking, encryption, CIDR
+
+| `clusters[].nodes[]`
+| `role`, `failureDomainZone`, `hardware.{arch,cpuCores,memoryMb,systemReservedMb,systemDiskReservedGb,lvmSnapshotReservePercent,disks,accelerators}`
+| Hardware inventory and reserves
+
+| `clusters[].loadBalancers[]`
+| `layer`, `provider`, `upstreamEdge`, `trustedProxySource`, `forwardingMode`, `http3Quic`, `tls`
+| Load-balancing chain
+
+| `clusters[].securityZones[]`
+| `podSecurityStandard`, `quotaCpuCores`, `quotaMemoryMb`
+| Zones = Namespace
+
+| `clusters[].logicalGroups[]`
+| `id`, `title`, `collapsed`
+| C4 relationship groups
+
+| `clusters[].components[]`
+| `passport`, `passportRev`, `config`, `topology`, `resources`, `storage`/`volumes`, `expose`, `bindings`, `bootstrap`, `workloadOverride`, `imagePullSecretRef`, `licenseSecretRef`
+| Service instances
+
+| `clusters[].bindings[]`
+| `from`, `to`, `toSlot`, `asRequirement`, `envPrefix`, `envOverrides`, `secretRotationEpoch`, `deliveryGuarantee`, `outboxSourceRequirement`, `type`
+| Graph edges
+
+| `crossClusterLinks[]`
+| `relationType`, `transport`, `encryption`, `maxBandwidthMbps`, `rpoTargetSec`, `toSlot`
+| Cross-cluster bridges
+|===
+
+==== Enumerations (enums)
+
+[cols="2,4", options="header"]
+|===
+| Field | Allowed values
+
+| `metadata.category`
+| `database`, `analytics`, `cache`, `message-queue`, `application`, `ai-ml`, `gateway`, `observability`, `storage`, `security`, `external`
+
+| `metadata.archetype`
+| `stateless-app`, `stateful-service`, `operator-cluster`, `edge-gateway`, `external-bridge`, `scheduled-job`
+
+| `metadata.distribution.tier`
+| `open-core`, `private-custom`
+
+| `metadata.canvasUI.nodeShape`
+| `standard-card`, `database-cylinder`, `queue-pipe`, `gateway-shield`, `external-cloud`
+
+| `parameters[].type`
+| `string`, `int`, `number`, `bool`, `enum`, `string-list`, `secret-ref`
+
+| `*.applyImpact` (parameters / configFormulas)
+| `pod-restart`, `hot-reload`, `rolling-switchover`, `immutable` / `hot-reload`, `rolling-switchover`, `pod-restart`
+
+| `workload.engine`
+| `k8s-deployment`, `k8s-statefulset`, `k8s-daemonset`, `k8s-cronjob`, `flux-helm-release`, `operator-crd`
+
+| `workload.priorityClass`
+| `auto-by-archetype`, `system-critical`, `stateful-core`, `stateless-web`, `background-batch`
+
+| `probes.*.type`
+| `http`, `tcp`, `grpc`, `exec`
+
+| `interfaces.egressDefaultMode`
+| `graph-only`, `allow-public-internet`, `allow-fqdn-whitelist`
+
+| `endpoints[].protocol`
+| `http`, `grpc`, `tcp`, `udp`, `tcp-udp`
+
+| `endpoints[].role`
+| `ui`, `api`, `management`, `telemetry`, `datastore`, `event-stream`, `generic`
+
+| `endpoints[].defaultScope` / `expose[].scope`
+| `public`, `protected`, `cluster-private`, `telemetry` / `public`, `protected`
+
+| `clientContract.sidecar.injectionTarget`
+| `k8s-native-init-restart-always`, `standard-container`
+
+| `clientContract.sidecar.deduplicationScope`
+| `per-target-component`, `per-binding`
+
+| `clientContract.sidecar.portAllocationStrategy`
+| `deterministic-offset`, `static`
+
+| `clientContract.sidecar.listeners[].targetRole`
+| `primary-rw`, `replicas-ro`, `all-healthy`
+
+| `requires[].dependencyStage`
+| `infrastructure-ready`, `runtime-parallel`
+
+| `topology.mode`
+| `standalone`, `degraded-ha`, `strict-ha`, `sharded-cluster`
+
+| `topologyModes[].podAntiAffinity`
+| `soft`, `spread-skew-1`, `hard-per-node`, `hard-per-zone`, `hard-per-disk`
+
+| `topologyModes[].updateStrategy`
+| `rolling`, `primary-last`, `recreate`
+
+| `topologyModes[].quorumType`
+| `none`, `raft-odd`, `primary-standby`, `witness-assisted`
+
+| `topologyModes[].quorumArbiter`
+| `none`, `witness-pod`, `cloud-lease-fencing`
+
+| `#VolumeSpec.mediaTier`
+| `nvme-local`, `ssd-network`, `hdd-bulk`, `ram-tmpfs`
+
+| `#VolumeSpec.resizePolicy`
+| `expand-only-monotonic`, `immutable`
+
+| `#VolumeSpec.deletionPolicy`
+| `retain`, `delete`
+
+| `#VolumeSpec.nodeLossRecovery`
+| `rehydrate-from-backup`, `reseed-from-peer`, `manual-wait`
+
+| `#VolumeSpec.lvmOptions.provisioner`
+| `topolvm-nvme`, `local-path`, `external-csi`
+
+| `#VolumeSpec.lvmOptions.mountFlags` (`#MountFlag`)
+| `noatime`, `nodiratime`, `relatime`, `strictatime`, `lazytime`, `sync`, `dirsync`, `async`, `ro`, `rw`, `discard`, `nodiscard`, `noexec`, `nosuid`, `nodev`, `norecovery`, `nouuid`, `nobarrier`, `barrier`
+
+| `#TunableValue.mergeStrategy`
+| `max`, `min`, `exclusive-match`
+
+| `resources.cpuLimitPolicy`
+| `burstable-no-limit`, `hard-cfs-limit`
+
+| `resources.networkQosClass`
+| `realtime-interactive`, `throughput-data`, `background-bulk`
+
+| `resources.numaTopologyPolicy`
+| `best-effort`, `single-numa-node`
+
+| `verticalScalePolicy.cpu` / `.memory`
+| `in-place`, `pod-restart` / `in-place-grow-only`, `pod-restart`
+
+| `backup.mode`
+| `operator-managed`, `sidecar-stream`, `volume-snapshot-job`, `custom-job`
+
+| `backup.targetReplicaRole`
+| `prefer-standby`, `primary-only`
+
+| `backup.versionCoupling`
+| `match-workload-major`, `pinned`
+
+| `day2Actions[].category`
+| `first-aid`, `maintenance`, `migration-cutover`, `scaling`
+
+| `day2Actions[].executionType`
+| `gitops-patch`, `k8s-job`, `operator-annotation`
+
+| `day2Actions[].executionType`
+| *(removed in MVP — support roles are out of scope)*
+
+| `loadBalancers[].layer`
+| `edge-proxy`, `l7-gateway`, `l4-balancer`
+
+| `loadBalancers[].tls`
+| `letsencrypt-auto`, `letsencrypt-dns01-wildcard`, `letsencrypt-http01`, `custom-secret`, `none`
+
+| `loadBalancers[].forwardingMode`
+| `ebpf-dsr-maglev`, `snat`
+
+| `securityZones[].podSecurityStandard`
+| `restricted`, `baseline`, `privileged`
+
+| `security.imageRegistryPolicy`
+| `local-p2p-cache`, `direct`, `airgapped-mirror`
+
+| `security.controlPlaneQuorumMode`
+| `odd-etcd`, `witness-arbiter`
+
+| `nodes[].role`
+| `control-plane-worker`, `control-plane-only`, `worker-only`
+
+| `nodes[].pricingTier`
+| `micro-vps`, `standard-node`, `heavy-bare-metal`
+
+| `externalResources[].role`
+| `migration-source`, `hybrid-bridge`, `backup-vault`
+
+| `externalResources[].transport` / `crossClusterLinks[].transport`
+| `direct`, `wireguard-tunnel`, `mtls-gateway` / `wireguard-tunnel`, `mtls-gateway`, `direct`
+
+| `bindings[].type`
+| `service-binding`, `live-migration-replica`, `oidc-protection`
+
+| `bindings[].deliveryGuarantee`
+| `direct`, `transactional-outbox`
+
+| `crossClusterLinks[].relationType`
+| `active-passive-replication`, `global-service-mesh`, `telemetry-and-events-uplink`
+
+| `crossClusterLinks[].encryption`
+| `wireguard-mtls`, `tls-strict`
+
+| `metadata.gitMode`
+| `managed-embedded`, `byo-git`
+|===
+
+=== CEL formulas, tokens, and macros
+
+==== Evaluation context
+
+CEL expressions in `configFormulas`, `sharedQuotaFormula`, `topologyModes[].replicas`, and `parameters[].visibleWhen` can use:
+
+[cols="2,4", options="header"]
+|===
+| Expression | Meaning
+
+| `resources.memoryMb`, `resources.cpuCores`
+| Instance limits from `topology.yaml`
+
+| `storage.sizeGb`
+| Size of the primary volume
+
+| `configFormulas.<name>`
+| Value of an already computed formula (as in `sharedQuotaFormula`)
+
+| `graph.maxBoundConsumerPods`
+| Peak consumer budget: Σ(`coalesce(autoscaling.maxReplicas, replicas) + maxSurge`) of all bound components
+
+| `topology.mode`, `topology.shards`, `topology.replicas`
+| Instance mode parameters
+
+| `service.rwDns`, `service.httpDns`, etc.
+| Provider service DNS names
+
+| `allocatedPorts.<listener>`
+| Actual sidecar local port (after `deterministic-offset`)
+
+| `credentials.username`, `.password`, `.database`
+| Credentials created by the provisioner
+
+| `exported.<token>` / `${exported.<key>}`
+| `clientContract.exportedTokens` and external `exportedAttributes` tokens
+|===
+
+==== Token templates
+
+`envMapping` and `exportedTokens` use `${...}` substitutions and computed `=${...}` strings:
+
+[source,yaml]
+----
+exportedTokens:
+  host: "=${ topology.mode == 'standalone' ? service.rwDns : '127.0.0.1' }"
+  uri:  "postgresql://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.rw}/${credentials.database}"
+requires:
+  database:
+    envMapping:
+      DATABASE_URL: "${exported.uri}"
+----
+
+==== Typical formulas
+
+[cols="2,3,3", options="header"]
+|===
+| Task | Formula | Comment
+
+| PostgreSQL `shared_buffers`
+| `string(int(resources.memoryMb * 0.25)) + 'MB'`
+| 25% RAM; `rolling-switchover`
+
+| PostgreSQL `work_mem`
+| `string(max(4, int((resources.memoryMb * 0.20) / max(100, min(500, int(resources.memoryMb / 16)))))) + 'MB'`
+| Tied to `max_connections`; peak avoids OOM
+
+| PostgreSQL `max_slot_wal_keep_size`
+| `string(int(storage.sizeGb * 1024 * 0.15)) + 'MB'`
+| 15% of disk for WAL
+
+| ClickHouse `max_server_memory_usage`
+| `string(int(resources.memoryMb * 0.80) * 1048576)`
+| 80% ceiling, `unit: bytes`
+
+| JVM heap (OpenSearch etc.)
+| `min(int(resources.memoryMb * 0.5), 31744)`
+| 31 GB cap (compressed OOPs)
+
+| PgBouncer pool quota
+| `max(2, int((int(configFormulas.max_connections) * 0.80) / max(1, graph.maxBoundConsumerPods)))`
+| Sum of pools ≤ 80% of `max_connections`
+
+| Sharded cluster replicas
+| `"=${ topology.shards * 2 }"`
+| Computed `replicas` in the mode
+|===
+
+==== Script and macro URIs
+
+[cols="2,3", options="header"]
+|===
+| URI | Where it lives
+
+| `passport://macros/<name>`
+| passport `macros`
+
+| `topology://macros/<name>`
+| topology `macros` / `topology/macros/`
+
+| `passport://scripts/<name>`
+| passport `scripts`
+
+| `topology://scripts/<name>`
+| topology `scripts` / `topology/scripts/`
+|===
+
+=== Compilation model
+
+==== Projection
+
+One topology component expands into 5–8 objects: workload (Deployment/StatefulSet/…), PDB, NetworkPolicy, HTTPRoute/Gateway, HPA, Secrets/SOPS, provisioner/migration Jobs, ServiceMonitor. `clientContract` sidecars are injected into `spec.initContainers` with `restartPolicy: Always` (KEP-753).
+
+==== GitOps stages
+
+[cols="1,3,3", options="header"]
+|===
+| # | Stage | Contents
+
+| 0
+| `flux-system/`
+| GitOps controller
+
+| 1
+| `01-node-tuning/`
+| `NodeTuningProfile` profiles: monotonic merge of sysctl/sysfs/ulimits, chrony, Readiness Gate `tuned.amispec.io/<hash>: ready`
+
+| 2
+| `02-operators-and-networking/`
+| Datastore operators, L7/L4 balancers, edge integrations
+
+| 3
+| `03-stateful-clusters/`
+| Data clusters, SOPS secrets, PDB
+
+| 4a
+| `04a-provisioners-day2/`
+| Idempotent DDL/provisioning Jobs with `-<sha8>` suffix
+
+| 4b
+| `04b-app-migrations-expand/`
+| Expand migrations BEFORE rolling out new pods
+
+| 5
+| `05-applications/`
+| Applications, sidecars, HPA, HTTPRoute
+
+| 6
+| `06-zero-trust-and-observability/`
+| CiliumNetworkPolicy (with `kube-dns:53`), ServiceMonitor, dashboards
+|===
+
+==== Two graph planes
+
+* *Service discovery plane* (DNS + NetworkPolicy): allows `A ↔ B` cycles.
+* *Boot-order plane* (`dependsOn`): acyclic DAG only on `dependencyStage: infrastructure-ready`; `runtime-parallel` is one wave.
+
+==== Provenance labels
+[[provenance]]
+
+The compiler writes into manifests:
+
+[cols="2,4", options="header"]
+|===
+| Label | Purpose
+
+| `amispec.io/component-id`
+| Instance identifier
+
+| `amispec.io/passport`
+| `id@version-rev`
+
+| `amispec.io/zone`
+| Security zone
+
+| `amispec.io/injected-sidecars`
+| Injected sidecar list (for reverse decompilation)
+
+| `amispec.io/binding-edge`
+| Binding-edge provenance
+
+| `amispec.io/user-spec-delta`
+| JSON delta of user values
+|===
+
+==== Reverse decompilation
+
+Forward compilation is reversible. Full contract, reconstruction mapping and
+round-trip guarantees are specified in <<reverse-compilation>>.
+
+[cols="1,3,3", options="header"]
+|===
+| Mode | Input | Behavior
+
+| `ami decompile`
+| Manifests with Provenance labels
+| 100% lossless round-trip back to `topology/`; synthetic sidecars and `tmp-scratch` are filtered out
+
+| `ami import-k8s`
+| Foreign K8s/Flux/Helm manifests
+| Classify by CRD/image signatures → recover `bindings[]`/`expose[]` → synthesize private passports in `.amispec/private-specs/` → lay out the canvas
+|===
+
+==== Core compiler invariants
+[[compiler-invariants]]
+
+Below are *normative* compilation rules. A conforming compiler implementation MUST enforce each of them.
+
+. `terminationGracePeriodSeconds` MUST be computed as `max(gracefulStopTimeoutSec, preStopSleepSec + max(maxEndpointTimeoutSec, maxStatementTimeoutSec))`.
+. The sum of connection pools MUST stay ≤ 80% of `max_connections` even at HPA `maxReplicas` + `maxSurge`.
+. Shrinking `storage.sizeGb` / `replicas` below `committed*` MUST be blocked.
+. Formulas with `applyImpact: rolling-switchover` MUST be deferred to `maintenanceWindow` on in-place RAM growth; on RAM shrink, formulas MUST apply first, then cgroup shrink.
+. Migration and provisioning Jobs MUST get the `-<sha8>` suffix and `ttlSecondsAfterFinished`.
+. Pod CIDR MUST be computed as `10.<100+clusterMeshId>.0.0/16`, Service CIDR as `10.<200+clusterMeshId>.0.0/16`.
+. `preStopDrainDelaySec` MUST be added only when `injectionTarget: standard-container`.
+. Runtime `scripts` MUST NOT execute on the compiler host; they MUST be packaged content-addressed (`-<sha8>`) and mounted read-only.
+. Provenance labels (see <<provenance>>) MUST be present in generated manifests.
+. Compilation MUST be deterministic: identical (passports + topology) yield the same manifest tree (up to allowed timestamp fields).
+
+==== Example compiled manifest
+
+Below is a `Deployment` fragment generated for a stateless app with two client sidecars, HPA peak, and in-place resize. This is the *result* of compilation, not something a user writes.
+
+[source,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-core
+  namespace: dmz-public
+  labels:
+    amispec.io/component-id: "django-core"
+    amispec.io/passport: "stateless-app@5.1-rev3"
+    amispec.io/zone: "dmz-public"
+  annotations:
+    reloader.stakater.com/auto: "true"
+    amispec.io/injected-sidecars: "pgbouncer-sidecar,chproxy-sidecar"
+    amispec.io/user-spec-delta: '{"topology":{"mode":"strict-ha","replicas":4},"resources":{"cpuCores":2,"memoryMb":2048}}'
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: django-core
+        amispec.io/zone: dmz-public
+      annotations:
+        kubernetes.io/egress-bandwidth: "1G"
+    spec:
+      priorityClassName: stateless-web
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: django-core
+      terminationGracePeriodSeconds: 35
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      volumes:
+        - name: tmp-scratch
+          emptyDir: { sizeLimit: "256Mi" }
+      # Native KEP-753 sidecars: start before app, stop after
+      initContainers:
+        - name: pgbouncer-sidecar
+          image: example/pgbouncer-ha:1.23-alpine
+          restartPolicy: Always
+          ports:
+            - { name: pg-rw, containerPort: 5432 }
+            - { name: pg-ro, containerPort: 5433 }
+          env:
+            # 80% of max_connections / maxBoundConsumerPods (4 + 8 + 1 = 13) = 30
+            - { name: MAX_DB_CONNECTIONS_PER_POD, value: "30" }
+            - { name: MAX_PREPARED_STATEMENTS, value: "200" }
+          startupProbe:
+            tcpSocket: { port: 5432 }
+            periodSeconds: 1
+          resources:
+            requests: { cpu: "50m", memory: "48Mi", ephemeral-storage: "256Mi" }
+            limits: { memory: "48Mi", ephemeral-storage: "256Mi" }
+        - name: chproxy-sidecar
+          image: example/chproxy:1.26.0
+          restartPolicy: Always
+          ports:
+            - { name: ch-http, containerPort: 8123 }
+          startupProbe:
+            httpGet: { path: "/ping", port: 8123 }
+            periodSeconds: 1
+          resources:
+            requests: { cpu: "50m", memory: "64Mi", ephemeral-storage: "256Mi" }
+            limits: { memory: "64Mi", ephemeral-storage: "256Mi" }
+      containers:
+        - name: app
+          image: ghcr.io/example/django-core@sha256:8f3a1bc49d2e…
+          securityContext:
+            readOnlyRootFilesystem: true
+          resizePolicy:                          # KEP-1287: in-place CPU/RAM
+            - { resourceName: cpu, restartPolicy: NotRequired }
+            - { resourceName: memory, restartPolicy: NotRequired }
+          volumeMounts:
+            - { name: tmp-scratch, mountPath: "/tmp" }
+          env:
+            - name: DATABASE_RW_URL
+              valueFrom: { secretKeyRef: { name: django-core-bindings, key: DATABASE_RW_URL } }
+            - name: DATABASE_RO_URL
+              valueFrom: { secretKeyRef: { name: django-core-bindings, key: DATABASE_RO_URL } }
+            - name: CLICKHOUSE_URL
+              value: "http://127.0.0.1:8123/analytics"
+          livenessProbe:
+            httpGet: { path: "/health/live-local", port: 8000 }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: "/health/ready", port: 8000 }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              exec: { command: ["sh", "-c", "sleep 5"] }
+          resources:
+            requests: { cpu: "2000m", memory: "2048Mi", ephemeral-storage: "2048Mi" }
+            limits: { memory: "2048Mi", ephemeral-storage: "2048Mi" }   # CPU not capped (CFS)
+----
+
+Note the invariant effects: `terminationGracePeriodSeconds` is compiler-computed; CPU limits are absent under `cpuLimitPolicy: burstable-no-limit`; the connection pool is split on HPA peak + surge; spread is `2-1-1` via `topologySpreadConstraints`; Provenance labels keep compilation reversible.
+
+==== End-to-end validation matrix
+[[validation-matrix]]
+
+The standard is validated on typical industrial configurations. The matrix is an acceptance checklist: if your scenario matches a row, ensure the listed mechanisms are engaged.
+
+[cols="1,3,4", options="header"]
+|===
+| # | Configuration | AmiSpec mechanisms engaged
+
+| 1
+| High-load SaaS / FinTech core (HA)
+| Stack: web + workers + beat → PostgreSQL HA + ClickHouse HA + Valkey HA. Two native sidecars (`pgbouncer` + `chproxy`), R/W split `5432/5433`, `sharedQuotaFormula`, `autoscaling.customMetric`, `preDeployExpandCommand`, `zeroEndpoints`, `maxReplicas: 1`
+
+| 2
+| AdTech RTB (bus + columnar DB)
+| Stack: L4/BGP VIP → bidder → Redpanda → ClickHouse Sharded + Valkey Cluster. `diskExclusive: true`, `volumes` map (hot/cold), `vm.max_map_count = 1600000`, `maxClockSkewMs: 50`
+
+| 3
+| Cloud exit (Cloud Repatriation)
+| External RDS source + private `stateful-service` passport. `WaitForFirstConsumer`, `nodeLossRecovery`, `deletionPolicy: retain`, `transport: wireguard-tunnel`, `transactional-outbox`
+
+| 4
+| Industrial IoT (L4 + L7)
+| Stack: MQTT/EMQX on L4 + dashboard/API on L7 → NATS → TimescaleDB/ClickHouse. Two `loadBalancers` of different layers, `forwardingMode: ebpf-dsr-maglev`, `proxyProtocolV2`, `trustedProxySource`
+
+| 5
+| GenAI / RAG (GPU + SSE)
+| Stack: gateway → LLM proxy → vLLM/Ollama + Qdrant + PostgreSQL. `accelerators` with `minMemoryGb`, `shmSizeMb`, `streaming: sse`, `timeoutSeconds: 1800`, `requestHeadersTimeoutSec`
+
+| 6
+| Payment core (Temporal + sync DB)
+| Stack: Temporal + ledger → PostgreSQL strict sync + RabbitMQ quorum. Several logical DBs, `deduplicationScope: per-target-component`, `provisioner.quotas`, `data_durability: sync-strict`
+
+| 7
+| Polyglot OLTP → OLAP (CDC)
+| `onConsumerBindMutations` (`wal_level: logical`), `max_slot_wal_keep_size` (15% of disk), `emergencyBallastMb`, `maxUploadBandwidthMbps`
+
+| 8
+| Headless e-commerce (5 stores)
+| Stack: storefront + core + workers → PostgreSQL + Valkey + Meilisearch + RabbitMQ + MinIO/SeaweedFS. Five typed `requires` slots, Two-Plane Graph Resolution, `public` + `protected` expose
+
+| 9
+| Air-gapped registry and CI
+| Stack: Gitea + Plane + Harbor (Trivy) + CI on shared PostgreSQL and two Valkeys. `deterministic-offset` (ports `6379`/`16379`), `imageRegistryPolicy: airgapped-mirror`, `maxBodySizeMb: 0`
+
+| 10
+| SSO / Identity-Aware Proxy
+| `provisioner.driver: oidc-client-job`, `type: oidc-protection`, `securityPolicy.clientAuth: oidc`
+
+| 11
+| Low-latency / HFT
+| `cpuPinning: exclusive-static`, `numaTopologyPolicy: single-numa-node`, `networkQosClass: realtime-interactive`, FQDN-whitelist
+
+| 12
+| Search / log JVM cluster (OpenSearch/Elasticsearch)
+| Heap formula with 31 GB cap, `mergeStrategy: max` for `vm.max_map_count`, `incompatiblePassportsOnSameNode`
+
+| 13
+| Legacy Strangler Fig (PHP/Java monolith + MariaDB + new API)
+| `pathPrefix`, `companions` (nginx + php-fpm), `configMounts`, `sessionAffinity: cookie-sticky`
+
+| 14
+| Two-server small cluster (Degraded HA)
+| `degraded-ha`, `witnessComponent`, `quorumArbiter`, `systemReservedMb`, `adaptive-zero-surge-on-tight-ram`
+
+| 15
+| Media streaming + object storage (MinIO/SeaweedFS EC:2)
+| `minNodes` (Erasure Coding), `autoscaling.customMetric`, scratch NVMe volume
+
+| 16
+| Banking enclave (hard zoning)
+| `securityZones`, `forbiddenConsumerZones`, `podSecurityStandard: restricted`, `clientAuth: mtls`
+
+| 17
+| Observability
+| `implicitTelemetryLayer`, `localAnomalyRules`, `logPolicy.redactPii`
+
+| 18
+| Multi-Cluster DR active-passive (two DCs)
+| `crossClusterLinks`, unique `clusterMeshId`, `sopsRecipients`, `bootstrap`, `rpoTargetSec`
+
+| 19
+| Geo-distributed active-active
+| `relationType: global-service-mesh`, ClusterMesh, local affinity
+
+| 20
+| Fleet Hub-and-Spoke (edge stores → HQ)
+| `fleetCount`, `relationType: telemetry-and-events-uplink`, `maxBandwidthMbps`
+|===
+
+=== Reverse compilation (decompile)
+[[reverse-compilation]]
+
+Reverse compilation reconstructs AmiSpec configuration documents from a
+generated (or provenance-annotated) Kubernetes / FluxCD manifest tree. It is
+the counterpart of <<_compilation_model>>: forward compile expands one graph
+node into many manifests; reverse compile folds those manifests back into
+topology and (where declared) passport references.
+
+==== Fidelity levels
+
+[cols="2,4,4", options="header"]
+|===
+| Level | Input | Guarantee
+
+| *A. Lossless decompile*
+| Tree produced by a conforming compiler, carrying Provenance labels (<<provenance>>)
+| Round-trip is bijective on user-level values: reconstructed `TopologyBlueprint` equals the source instance for all fields encoded in `user-spec-delta`, labels and annotations.
+
+| *B. Heuristic import* (`import-k8s` / brownfield)
+| Foreign K8s / Flux / Helm manifests without AmiSpec Provenance
+| Best-effort classification and synthesis. Output is a valid AmiSpec topology plus private passports; it is *not* required to be bit-identical to any historical source.
+|===
+
+This document specifies *Level A* as normative. Level B is a product workflow:
+its detection heuristics are informative; only the *output contract* (valid
+AmiSpec documents) is normative.
+
+==== Input contract (normative)
+
+A conforming lossless decompiler MUST accept any tree that a conforming
+compiler can emit and MUST treat the following labels / annotations as
+authoritative (see <<provenance>>):
+
+[cols="2,4", options="header"]
+|===
+| Key | Reconstructs
+
+| `amispec.io/component-id`
+| `components[].id`
+
+| `amispec.io/passport`
+| `components[].passport`, `version`, `passportRev` via `id@version-rev`
+
+| `amispec.io/zone`
+| `components[].zone` (and namespace of the workload)
+
+| `amispec.io/cluster-id`
+| `clusters[].id`
+
+| `amispec.io/injected-sidecars`
+| Sidecar set (filtered from `initContainers`; not re-emitted as user config)
+
+| `amispec.io/binding-edge`
+| `bindings[]` edges in `from->to:slot` form
+
+| `amispec.io/user-spec-delta`
+| JSON delta of `topology`, `resources`, `config`, `group`, `backupTarget`, `zone`
+
+| `amispec.io/stage`
+| Stage placement (diagnostic only; not required to round-trip as user config)
+
+| `amispec.io/cluster-id` (workloads)
+| Cluster membership when path inference is unavailable
+|===
+
+If an object carries no AmiSpec Provenance, the decompiler MUST NOT invent a
+component identity for it; it MAY skip the object and report a warning.
+
+==== Reconstruction mapping
+
+[cols="2,3,4", options="header"]
+|===
+| Manifest source | Topology field | Notes
+
+| `NodeTuningProfile` metadata/labels + `spec.hardware`
+| `clusters[].nodes[]`
+| `id` from `amispec.io/node-id` (or name suffix); CPU/RAM/disk/reserves from `spec.hardware`; `failureDomainZone` from `spec`
+
+| `GatewayClass`
+| `clusters[].loadBalancers[]`
+| `id`, `layer`, `provider`, `tls`, `forwardingMode` from labels/annotations
+
+| `Deployment` / `StatefulSet`
+| `clusters[].components[]`
+| Passport pin, `replicas`, `zone`/`namespace`, `resources` from container requests, delta overlay
+
+| `Secret` (`*-bindings`)
+| `bindings[]`, `user-spec-delta`
+| `amispec.io/binding-edge` → edges; delta restores `config` / `backupTarget`
+
+| `HTTPRoute`
+| `components[].expose[]`
+| `endpoint`, `viaBalancer`, `scope`, `hostname`, `pathPrefix`
+
+| `PodDisruptionBudget`
+| implicit (mode/disruption)
+| Not stored as user config; presence informs default `disruptionBudget`
+
+| `HorizontalPodAutoscaler`
+| `components[].topology.autoscaling`
+| `minReplicas`, `maxReplicas`, `cooldownSeconds` (stabilization window)
+
+| `Job` (`provision-*`, `migrate-expand-*`)
+| lifecycle hooks
+| Job names are content-addressed; hooks are not required to round-trip as command text
+
+| `CiliumNetworkPolicy`
+| egress posture
+| `graph-only` default implied; not user-editable topology data
+
+| `ConfigMap` `_meta/*`
+| `externalResources[]`, `crossClusterLinks[]`
+| Role, endpoint, transport, relation type, RPO / bandwidth
+|===
+
+==== Round-trip guarantees (normative)
+
+For a tree produced by a conforming compiler from topology instance `T`:
+
+. `decompile(compile(T))` MUST yield a topology `T'` such that:
+  * `T'.clusters[].id`, `components[].id`, `passport`, `version`, `passportRev` are equal to `T`;
+  * `components[].topology.mode`, `replicas`, `committedReplicas` and `resources` are equal to `T` (from `user-spec-delta`);
+  * `components[].zone`, `group`, `backupTarget`, `config` are equal to `T` when present;
+  * cluster-level `bindings[]` derived from provenance edges match `T`'s edges (`to`, `toSlot`).
+. Synthetic objects introduced only for compilation (KEP-753 sidecars, `tmp-scratch`, hashed Job names) MUST be omitted from `T'`.
+. Fields not represented in manifests (for example `canvas` coordinates, `macros`, `scripts` bodies) MUST NOT be invented; their absence in `T'` is not a round-trip violation.
+. The decompiler MUST NOT execute runtime scripts or call external APIs.
+
+Note: `compile(decompile(M))` for a *foreign* tree `M` is not required to be
+byte-identical to `M`; only Level A (provenance-carrying trees) is bijective.
+
+==== Modes
+
+[cols="2,4,4", options="header"]
+|===
+| Mode | Pipeline | Normative output
+
+| *Lossless decompile*
+| Read tree → parse Provenance → reconstruct instances → emit `topology.yaml` (and optional `topology/` modules)
+| Valid `TopologyBlueprint` (`topology.amispec.io/v1`) satisfying <<conformance>> topology rules
+
+| *Heuristic import*
+| Classify workloads (CRD / image / chart signatures) → map services & ports → recover bindings from env/secrets/netpols → synthesize private passports in `.amispec/private-specs/`
+| Valid `ComponentPassport` + `TopologyBlueprint` pair; private passports use `distribution.tier: private-custom`
+|===
+
+==== Example (lossless)
+
+.Input provenance fragment (`05-applications/workloads.yaml`)
+[source,yaml]
+----
+metadata:
+  name: web
+  labels:
+    amispec.io/component-id: "web"
+    amispec.io/passport: "stateless-app@1.0.0-rev1"
+    amispec.io/cluster-id: "local"
+  annotations:
+    amispec.io/user-spec-delta: '{"topology":{"mode":"standalone","replicas":2},"resources":{"cpuCores":1,"memoryMb":512}}'
+----
+
+.Reconstructed fragment (`topology.yaml`)
+[source,yaml]
+----
+clusters:
+  - id: local
+    components:
+      - id: web
+        passport: stateless-app
+        version: "1.0.0"
+        passportRev: 1
+        topology: { mode: standalone, replicas: 2 }
+        resources: { cpuCores: 1, memoryMb: 512 }
+----
+
+==== Conformance for reverse compilation
+
+A tool claims *AmiSpec reverse-compiler (Level A)* conformance when:
+
+. it reconstructs a valid `TopologyBlueprint` from any tree this specification's compiler can emit;
+. round-trip guarantees above hold for all fields listed in `user-spec-delta`;
+. objects without Provenance are skipped with a warning, never guessed;
+. no runtime script from the tree is executed during decompile.
+
+=== Representative example values
+
+Informative examples used throughout this document and the reference passports:
+
+* *Backup drivers:* `cnpg-barman`, `wal-g`, `clickhouse-backup`, `restic-lvm-snapshot`
+* *Provisioner drivers:* `sql-job`, `s3-bucket-job`, `kafka-topic-job`, `oidc-client-job`
+* *Balancer providers:* `cloudflare`, `cloudfront`, `fastly`, `cilium-envoy`, `cilium-l4-bgp`
+* *Accelerator resource classes:* `nvidia.com/gpu`, `amd.com/gpu`, `habana.ai/gaudi`, `google.com/tpu`
+* *Egress allowlist forms:* `fqdn`, `fqdn:port`, `cidr:port`
+* *Module paths (Helm/OCI):* `oci://...`, `cloudnative-pg/cloudnative-pg`, `altinity/altinity-clickhouse-operator`
+
+These values illustrate the open `driver` / `provider` / `resourceClass` string fields; they are not closed enums in the meta-schema (mechanism vs policy).
+
+=== Glossary
+[[glossary]]
+
+[NOTE]
+====
+This section is *informative*. Canonical normative definitions are in <<terms>>; below is an expanded explanatory glossary.
+====
+
+[cols="2,5", options="header"]
+|===
+| Term | Definition
+
+| AmiSpec
+| Open standard for declarative component passports and infrastructure topologies
+
+| ComponentPassport
+| Reusable service-class description (meta-schema `catalog.amispec.io/v1`)
+
+| TopologyBlueprint
+| Concrete deployment (meta-schema `topology.amispec.io/v1`)
+
+| Passport revision (`passportRev`)
+| Version of passport rules (formulas, sidecars, quotas), independent of software version
+
+| Slot / Requirement
+| Named provider outlets and consumer inlets
+
+| Binding
+| Graph edge “consumer → provider slot”
+
+| clientContract
+| Connection inversion contract: the provider passport dictates the local proxy sidecar in the consumer pod
+
+| KEP-753 sidecar
+| Native Kubernetes sidecar (`initContainers` + `restartPolicy: Always`)
+
+| KEP-1287
+| In-place Pod resource update (cgroup v2) without restart
+
+| Capacity model
+| Declarative resource model (node budgets, reserves, commits) used by tooling to place workloads
+
+| Node Readiness Gate
+| Node readiness label after applying a kernel tuning profile
+
+| Monotonic merge
+| Merging sysctl/sysfs profiles via `mergeStrategy` (max/min/exclusive-match)
+
+| Degraded HA
+| Two-node mode with witness or cloud-lease-fencing
+
+| Expand / Contract
+| Two-phase schema migration: additive changes before rollout, destructive after
+
+| Transactional outbox
+| Guaranteed event delivery via an outbox table + relay sidecar
+
+| PITR
+| Point-in-Time Recovery — restore to a specified second
+
+| SOPS / Age
+| Encrypting secrets in Git for multiple recipients
+
+| Provenance metadata
+| Provenance labels in manifests that keep compilation reversible
+
+| Day-2 actions
+| Declarative service actions with allowlist and roles
+
+| Fleet
+| Group of homogeneous edge clusters (`fleetCount`)
+
+| Cutover
+| Transactional traffic switch during migration/DR
+|===
+
+=== Passport author checklist
+[[checklist-passport]]
+
+Checklist is *informative*; items are best practice (RFC 2119: SHOULD / RECOMMENDED) unless MUST is stated.
+
+. `metadata.id` MUST match `^[a-z0-9-]+$`; `passportRev` SHOULD be incremented on any rule change.
+. Document all supported `topologyModes` with honest `minNodes` and `uiWarning` for degraded modes.
+. `configFormulas` cover all memory-dependent parameters; `applyImpact` is set.
+. `livenessProbe` does NOT depend on external services.
+. For HA datastores, `clientContract` is filled with `sharedQuotaFormula` and R/W `listeners`.
+. `storage.deletionPolicy: retain` for stateful; `resizePolicy: expand-only-monotonic` is explicit.
+. `kernelTuning.mergeStrategy` is deliberate: `max` for limits, `min` for aggressive values, `exclusive-match` for incompatible modes.
+. `backup` includes `retentionDays`, `verifyRestoreJob`, `versionCoupling`.
+. `day2Actions` use only built-in commands/scripts; `cooldownSeconds` and `ttlSecondsAfterFinished` are set.
+. For commercial software: `distribution.tier: private-custom`, `requiresLicenseKey: true`, `licenseSecretRef` guidance.
+. The passport has been run through capacity validation in the modes you claim.
+
+=== Topology author checklist
+[[checklist-topology]]
+
+Checklist is *informative*; items are best practice (SHOULD) unless MUST is stated.
+
+. `projectId` and `clusterMeshId` MUST be unique; the CIDR formula must not clash with existing networks.
+. `sopsRecipients` contains keys of all controllers and the owner recovery key.
+. Each node honestly lists `memoryMb`, disks, and reserves; SSD/NVMe set `systemDiskReservedGb` and `lvmSnapshotReservePercent`.
+. Component `resources.memoryMb` fits the node budget including sidecars, witness, and `systemReservedMb`.
+. Bindings use `envPrefix` under `multiBind`; `secretRotationEpoch` is explicit.
+. `committedReplicas` / `committedSizeGb` are set for stateful components.
+. For external migration: `externalResources` + `type: live-migration-replica` + `bootstrap` on the target.
+. Multi-cluster: each cluster has its own `clusterMeshId`; `crossClusterLinks` carry `rpoTargetSec` and `maxBandwidthMbps`.
+. `expose` covers only needed endpoints; `securityPolicy` is enabled for public APIs.
+. Modular layout: `canvas.layout.yaml` is separate from infrastructure files.
+
+=== Appendix: invariants mapped to schema fields
+
+[cols="1,3,3", options="header"]
+|===
+| # | Invariant | Where expressed
+
+| 1
+| GitOps First
+| `metadata.gitMode`, compile into a Git tree, Provenance labels
+
+| 2
+| Zero-Privilege Control Plane
+| `day2Actions` allowlist + `triggerNonce`, `executionType` without arbitrary shell
+
+| 3
+| Inversion of the client balancer
+| `interfaces.provides[].clientContract`
+
+| 4
+| Kernel race protection
+| `kernelTuning` + Node Readiness Gate `tuned.amispec.io/<hash>`
+
+| 5
+| Resource mathematics
+| `configFormulas`, `sharedQuotaFormula`, `graph.maxBoundConsumerPods`, `oomSafetyMarginPercent`
+
+| 6
+| Universal archetypes
+| `archetype: stateless-app | stateful-service`, `allowWorkloadOverride`, `workloadOverride`
+
+| 7
+| Hybrid bridge and migration replicas
+| `externalResources`, `type: live-migration-replica`, `liveMigration.cutoverWorkflow`
+
+| 8
+| Multiple balancers
+| `loadBalancers[]` (edge / L7 / L4)
+
+| 9
+| Mutations from bindings
+| `onConsumerBindMutations.setConfig`
+
+| 10
+| Observability economics
+| `localAnomalyRules`, `logPolicy`
+
+| 11
+| Declarative Day-2 actions
+| `operations.day2Actions`
+
+| 12
+| Multi-cluster
+| `crossClusterLinks`, `clusterMeshId`, `fleetCount`
+|===
+
+=== Appendix: topology patterns and their fields
+
+[cols="2,3,3", options="header"]
+|===
+| Pattern | Key fields | Comment
+
+| HA datastore cluster
+| `topologyModes.strict-ha`, `clientContract`, `sharedQuotaFormula`
+| Primary + Standby, pools on clients
+
+| Two-node HA
+| `degraded-ha`, `quorumArbiter`, `witnessComponent`
+| Split-Brain protection
+
+| Sharded cluster
+| `sharded-cluster`, `shards`, `committedReplicas`, `preScaleDownDrainCommand`
+| Coordinators counted in `witnessComponent.replicas`
+
+| Singleton scheduler
+| `maxReplicas: 1`, `disruptionBudget.updateStrategy: recreate`
+| No double-run of periodic jobs
+
+| Pure worker
+| `container.zeroEndpoints: true`, `requires`, `autoscaling.customMetric`
+| No inbound ports, queue-based scaling
+
+| Scheduled job
+| `engine: k8s-cronjob`, `schedule.concurrencyPolicy: Forbid`
+| 0 RAM outside the run window
+
+| Multi-volume datastore
+| `volumes: { data, wal }`, `mediaTier`
+| Hot/cold and WAL separation
+
+| GPU inference
+| `accelerators`, `shmSizeMb`, `streaming: sse`
+| NCCL and long streams
+
+| Public storefront + protected admin
+| two `expose` entries with `scope: public/protected`, `securityPolicy`
+| Different access levels from one passport
+
+| Legacy monolith
+| `companions`, `pathPrefix`, `sessionAffinity`, `configMounts`
+| Strangler Fig
+
+| Hybrid with cloud
+| `externalResources`, `allowedFqdns`, `transport`
+| DNS policy `toFQDNs`
+
+| Air-gapped
+| `imageRegistryPolicy: airgapped-mirror`, `local-p2p-cache`
+| Without public internet
+
+| DR active-passive
+| `crossClusterLinks`, `bootstrap`, `rpoTargetSec`
+| Failover button
+
+| Geo active-active
+| `clusterMeshId`, `relationType: global-service-mesh`
+| Global services
+
+| Fleet edge
+| `fleetCount`, `telemetry-and-events-uplink`
+| N homogeneous clusters
+|===
+
+[appendix]
+== Revision History
+[[revision-history]]
+
+[cols="1,2,2,3", options="header"]
+|===
+| Version | Date | Status | Changes
+
+| 1.0.0
+| 2026-10-22
+| Stable Draft
+| First public release. Normative clauses (Scope, Normative References, Terms, Conformance, BCP 14 keywords), three-part user guide, full CUE meta-schemas, reference passports and topology, compilation model, validation matrix.
+|===
+
+[NOTE]
+====
+Material changes (including any change that alters conformance requirements, such as the register of a BCP 14 keyword) MUST be recorded here and SHOULD trigger a minor or major version increment according to Semantic Versioning ([SemVer]). Errata that do not change conformance MAY be noted without a version bump.
+====
+
+[appendix]
+== Bibliography
+
+The following documents are informative references.
+
+[cols="2,4", options="header"]
+|===
+| Reference | Title
+
+| [ISO-DIR-P2]
+| ISO/IEC Directives, Part 2 — Principles and rules for the structure and drafting of ISO and IEC documents.
+
+| [OASIS-KEYWORDS]
+| Keyword Guidelines for OASIS Specifications and Standards, Version 2.0.
+
+| [W3C-MOS]
+| W3C Manual of Style.
+
+| [OG-STYLE]
+| The Open Group Technical Publications Style Guide.
+
+| [OPENAPI]
+| OpenAPI Specification (OAS).
+
+| [amispec-practices]
+| Practical guide to standards-documentation practices (project companion document: `standards-documentation-practices.adoc`).
+|===
+
+---
+
+[NOTE]
+====
+The AmiSpec standard is published under the Apache License 2.0 (SPDX: `Apache-2.0`). The normative parts are the meta-schemas `schemas/component_passport.cue` and `schemas/topology_spec.cue` and the normative clauses of this document (Scope, Normative References, Terms and Definitions, Conformance, invariants, compiler invariants). Reference passports, topologies, examples, and checklists are informative; the CUE files and the community passport registry are authoritative.
+====

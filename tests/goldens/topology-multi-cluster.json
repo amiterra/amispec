@@ -1,0 +1,199 @@
+{
+    "apiVersion": "topology.amispec.io/v1",
+    "kind": "TopologyBlueprint",
+    "metadata": {
+        "projectId": "fintech-dr",
+        "organization": "example-corp",
+        "gitMode": "byo-git"
+    },
+    "externalResources": [
+        {
+            "id": "backups-s3",
+            "passport": "external-s3-compatible",
+            "role": "backup-vault",
+            "endpointFqdn": "s3.example.com",
+            "bucket": "backups",
+            "transport": "direct",
+            "secretRef": "sops://secrets/s3.enc.yaml"
+        }
+    ],
+    "clusters": [
+        {
+            "id": "prod-eu-central",
+            "name": "Production EU",
+            "domain": "example.io",
+            "k3sChannel": "v1.31",
+            "maintenanceWindow": "Sun 02:00-05:00 UTC",
+            "security": {
+                "sopsRecipients": [
+                    "age1examplepublickeyaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "age1examplepublickeybbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ],
+                "implicitTelemetryLayer": true,
+                "imageRegistryPolicy": "local-p2p-cache",
+                "controlPlaneQuorumMode": "odd-etcd",
+                "etcdBackupTarget": "backups-s3"
+            },
+            "cni": {
+                "engine": "cilium-ebpf",
+                "clusterMeshId": 1,
+                "kubeProxyReplacement": true,
+                "hubbleLiveMap": true,
+                "wireguardEncryption": true,
+                "mtuDiscoveryAndMssClamp": true,
+                "fqdnCacheMinTtlSec": 3600
+            },
+            "nodes": [
+                {
+                    "id": "node-bm-01",
+                    "role": "control-plane-worker",
+                    "pricingTier": "standard-node",
+                    "failureDomainZone": "fsn1-dc14",
+                    "monthlyCostUsd": 65,
+                    "hardware": {
+                        "arch": "amd64",
+                        "cpuCores": 16,
+                        "memoryMb": 65536,
+                        "systemReservedMb": 1280,
+                        "kernelSlabReservePercent": 3,
+                        "systemDiskReservedGb": 40,
+                        "lvmSnapshotReservePercent": 10,
+                        "disks": [
+                            {
+                                "name": "nvme0n1",
+                                "tier": "nvme-local",
+                                "sizeGb": 1000
+                            }
+                        ]
+                    }
+                }
+            ],
+            "loadBalancers": [],
+            "securityZones": [
+                {
+                    "id": "dmz-public",
+                    "name": "Public DMZ",
+                    "color": "#EFF6FF",
+                    "podSecurityStandard": "restricted",
+                    "quotaCpuCores": 16,
+                    "quotaMemoryMb": 24576
+                }
+            ],
+            "components": [
+                {
+                    "id": "pg-main",
+                    "passport": "postgresql",
+                    "version": "18.0.0",
+                    "passportRev": 6,
+                    "zone": "dmz-public",
+                    "config": {
+                        "data_durability": "sync-preferred"
+                    },
+                    "topology": {
+                        "mode": "strict-ha",
+                        "committedReplicas": 3
+                    },
+                    "resources": {
+                        "cpuCores": 4,
+                        "memoryMb": 16384
+                    },
+                    "storage": {
+                        "sizeGb": 250,
+                        "committedSizeGb": 250,
+                        "mediaTier": "nvme-local"
+                    },
+                    "backupTarget": "backups-s3"
+                }
+            ],
+            "bindings": []
+        },
+        {
+            "id": "dr-eu-west",
+            "name": "DR EU West",
+            "domain": "dr.example.io",
+            "k3sChannel": "v1.31",
+            "security": {
+                "sopsRecipients": [
+                    "age1examplepublickeycccccccccccccccccccccccccccccccccccccccccccc"
+                ],
+                "implicitTelemetryLayer": true,
+                "imageRegistryPolicy": "local-p2p-cache",
+                "controlPlaneQuorumMode": "witness-arbiter"
+            },
+            "cni": {
+                "engine": "cilium-ebpf",
+                "clusterMeshId": 2,
+                "kubeProxyReplacement": true,
+                "hubbleLiveMap": true,
+                "wireguardEncryption": true,
+                "mtuDiscoveryAndMssClamp": true,
+                "fqdnCacheMinTtlSec": 3600
+            },
+            "nodes": [
+                {
+                    "id": "node-dr-01",
+                    "role": "control-plane-worker",
+                    "pricingTier": "standard-node",
+                    "hardware": {
+                        "arch": "amd64",
+                        "cpuCores": 8,
+                        "memoryMb": 32768,
+                        "systemReservedMb": 1280,
+                        "kernelSlabReservePercent": 3,
+                        "systemDiskReservedGb": 40,
+                        "lvmSnapshotReservePercent": 10,
+                        "disks": [
+                            {
+                                "name": "nvme0n1",
+                                "tier": "nvme-local",
+                                "sizeGb": 500
+                            }
+                        ]
+                    }
+                }
+            ],
+            "loadBalancers": [],
+            "components": [
+                {
+                    "id": "pg-dr",
+                    "passport": "postgresql",
+                    "version": "18.0.0",
+                    "passportRev": 6,
+                    "topology": {
+                        "mode": "degraded-ha",
+                        "committedReplicas": 2
+                    },
+                    "resources": {
+                        "cpuCores": 4,
+                        "memoryMb": 8192
+                    },
+                    "storage": {
+                        "sizeGb": 250,
+                        "committedSizeGb": 250,
+                        "mediaTier": "nvme-local"
+                    },
+                    "bootstrap": {
+                        "fromBackupTarget": "backups-s3",
+                        "sourceComponentId": "pg-main",
+                        "recoveryTargetTime": "latest"
+                    }
+                }
+            ]
+        }
+    ],
+    "crossClusterLinks": [
+        {
+            "id": "pg-geo-dr",
+            "fromCluster": "prod-eu-central",
+            "fromComponent": "pg-main",
+            "toCluster": "dr-eu-west",
+            "toComponent": "pg-dr",
+            "toSlot": "sql-cluster",
+            "relationType": "active-passive-replication",
+            "transport": "wireguard-tunnel",
+            "encryption": "wireguard-mtls",
+            "maxBandwidthMbps": 500,
+            "rpoTargetSec": 5
+        }
+    ]
+}

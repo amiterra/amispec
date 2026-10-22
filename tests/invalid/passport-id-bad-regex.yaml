@@ -1,0 +1,24 @@
+apiVersion: catalog.amispec.io/v1
+kind: ComponentPassport
+metadata:
+  id: Demo_APP
+  name: Bad Id
+  version: 1.0.0
+  passportRev: 1
+  category: application
+  archetype: stateless-app
+  distribution: { tier: open-core, license: Apache-2.0 }
+  canvasUI: { icon: x, accentColor: "#000000", nodeShape: standard-card }
+topologyModes:
+  standalone:
+    description: d
+    minNodes: 1
+    replicas: 1
+    scaleDownPolicy: immediate
+    disruptionBudget: { maxUnavailable: 1, updateStrategy: rolling }
+    podAntiAffinity: soft
+workload: { engine: k8s-deployment, priorityClass: background-batch }
+interfaces: { egressDefaultMode: graph-only, endpoints: [], provides: [], requires: {} }
+hardwareAndKernel:
+  resources: { minCpuCores: 0.1, minMemoryMb: 64, recommendedMemoryMb: 128 }
+operations: { observability: { scrapeInterval: 30s } }

@@ -1,0 +1,6 @@
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: demo
+  organization: example
+  gitMode: managed-embedded

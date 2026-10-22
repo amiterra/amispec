@@ -1,0 +1,242 @@
+{
+    "apiVersion": "catalog.amispec.io/v1",
+    "kind": "ComponentPassport",
+    "metadata": {
+        "id": "postgresql",
+        "name": "PostgreSQL HA",
+        "version": "18.0.0",
+        "passportRev": 6,
+        "category": "database",
+        "archetype": "operator-cluster",
+        "distribution": {
+            "tier": "open-core",
+            "license": "Apache-2.0"
+        },
+        "canvasUI": {
+            "icon": "postgres-elephant",
+            "accentColor": "#336791",
+            "nodeShape": "database-cylinder"
+        }
+    },
+    "parameters": {
+        "data_durability": {
+            "label": "Durability",
+            "type": "enum",
+            "default": "async-fast",
+            "enumValues": [
+                "async-fast",
+                "sync-preferred",
+                "sync-strict"
+            ],
+            "targetPath": "spec.postgresql.synchronous.dataDurability",
+            "applyImpact": "hot-reload",
+            "uiControl": "select"
+        }
+    },
+    "topologyModes": {
+        "standalone": {
+            "description": "single node",
+            "minNodes": 1,
+            "replicas": 1,
+            "scaleDownPolicy": "immediate",
+            "disruptionBudget": {
+                "maxUnavailable": 1,
+                "updateStrategy": "rolling"
+            },
+            "podAntiAffinity": "soft"
+        },
+        "degraded-ha": {
+            "description": "two nodes with fencing",
+            "minNodes": 2,
+            "replicas": 2,
+            "scaleDownPolicy": "safe-drain-required",
+            "quorumType": "primary-standby",
+            "quorumArbiter": "cloud-lease-fencing",
+            "disruptionBudget": {
+                "maxUnavailable": 1,
+                "updateStrategy": "primary-last"
+            },
+            "podAntiAffinity": "hard-per-node",
+            "uiWarning": "Survives loss of one server."
+        }
+    },
+    "workload": {
+        "engine": "operator-crd",
+        "allowWorkloadOverride": false,
+        "priorityClass": "stateful-core",
+        "operatorSpec": {
+            "operatorHelmChart": "cloudnative-pg/cloudnative-pg",
+            "operatorVersion": "0.23.0",
+            "crdApiVersion": "postgresql.cnpg.io/v1",
+            "crdKind": "Cluster",
+            "manifestTemplate": "templates/cnpg-cluster.yaml.j2"
+        },
+        "configFormulas": {
+            "shared_buffers": {
+                "cel": "string(int(resources.memoryMb * 0.25)) + 'MB'",
+                "targetPath": "spec.postgresql.parameters.shared_buffers",
+                "applyImpact": "rolling-switchover",
+                "description": "25% of container memory limit"
+            }
+        }
+    },
+    "interfaces": {
+        "egressDefaultMode": "graph-only",
+        "endpoints": [
+            {
+                "name": "sql",
+                "protocol": "tcp",
+                "containerPort": 5432,
+                "role": "datastore",
+                "defaultScope": "cluster-private"
+            }
+        ],
+        "provides": [
+            {
+                "slot": "sql-cluster",
+                "capability": "postgres-sql",
+                "dialect": "postgresql",
+                "version": "18.0.0",
+                "clientContract": {
+                    "injectWhenModes": [
+                        "degraded-ha",
+                        "strict-ha"
+                    ],
+                    "sidecar": {
+                        "name": "pgbouncer-sidecar",
+                        "image": "example/pgbouncer-ha:1.23-alpine",
+                        "injectionTarget": "k8s-native-init-restart-always",
+                        "deduplicationScope": "per-target-component",
+                        "portAllocationStrategy": "deterministic-offset",
+                        "sharedQuotaFormula": "max(2, int((int(configFormulas.max_connections) * 0.80) / max(1, graph.maxBoundConsumerPods)))",
+                        "settings": {
+                            "poolMode": "transaction",
+                            "maxPreparedStatements": 200
+                        },
+                        "listeners": [
+                            {
+                                "name": "rw",
+                                "baseLocalPort": 5432,
+                                "targetRole": "primary-rw"
+                            },
+                            {
+                                "name": "ro",
+                                "baseLocalPort": 5433,
+                                "targetRole": "replicas-ro"
+                            }
+                        ],
+                        "resources": {
+                            "cpuMillicores": 50,
+                            "memoryMb": 48
+                        },
+                        "healthcheckIntervalSec": 1,
+                        "preStopDrainDelaySec": 5,
+                        "configTemplate": "sidecars/pgbouncer.ini.j2"
+                    },
+                    "exportedTokens": {
+                        "host": "=${ topology.mode == 'standalone' ? service.rwDns : '127.0.0.1' }",
+                        "port": "=${ allocatedPorts.rw }",
+                        "uri": "postgresql://${credentials.username}:${credentials.password}@${exported.host}:${allocatedPorts.rw}/${credentials.database}"
+                    }
+                },
+                "provisioner": {
+                    "driver": "sql-job",
+                    "image": "postgres:18-alpine",
+                    "template": "provisioners/init-db-user.sql.j2",
+                    "quotas": {
+                        "roleConnectionQuotaPercent": 50
+                    },
+                    "parameters": {
+                        "defaultStatementTimeoutSec": 60
+                    }
+                }
+            }
+        ],
+        "requires": {}
+    },
+    "hardwareAndKernel": {
+        "resources": {
+            "supportedArchitectures": [
+                "amd64",
+                "arm64"
+            ],
+            "minCpuCores": 0.5,
+            "minMemoryMb": 512,
+            "recommendedMemoryMb": 4096,
+            "ephemeralStorageMb": 2048,
+            "shmSizeMb": 512,
+            "oomSafetyMarginPercent": 15,
+            "numaTopologyPolicy": "single-numa-node",
+            "networkQosClass": "throughput-data",
+            "cpuLimitPolicy": "burstable-no-limit",
+            "verticalScalePolicy": {
+                "cpu": "in-place",
+                "memory": "in-place-grow-only"
+            }
+        },
+        "storage": {
+            "mountPath": "/var/lib/postgresql/data",
+            "minSizeGb": 10,
+            "defaultSizeGb": 50,
+            "resizePolicy": "expand-only-monotonic",
+            "deletionPolicy": "retain",
+            "diskExclusive": false,
+            "mediaTier": "nvme-local",
+            "nodeLossRecovery": "rehydrate-from-backup",
+            "lvmOptions": {
+                "provisioner": "topolvm-nvme",
+                "volumeBindingMode": "WaitForFirstConsumer",
+                "mountFlags": [
+                    "noatime",
+                    "nodiratime"
+                ],
+                "filesystem": "xfs",
+                "emergencyBallastMb": 1024
+            }
+        },
+        "kernelTuning": {
+            "priority": 80,
+            "maxClockSkewMs": 50,
+            "sysctl": {
+                "vm.swappiness": {
+                    "value": 1,
+                    "mergeStrategy": "min"
+                },
+                "vm.max_map_count": {
+                    "value": 262144,
+                    "mergeStrategy": "max"
+                }
+            },
+            "sysfs": {
+                "transparentHugepage": {
+                    "value": "never",
+                    "mergeStrategy": "exclusive-match"
+                }
+            },
+            "ulimits": {
+                "nofile": 262144
+            }
+        }
+    },
+    "operations": {
+        "observability": {
+            "scrapeEndpoint": "metrics",
+            "scrapeInterval": "30s",
+            "logPolicy": {
+                "maxRateLinesPerSec": 1000,
+                "redactPii": true
+            }
+        },
+        "backup": {
+            "mode": "operator-managed",
+            "driver": "cnpg-barman",
+            "versionCoupling": "match-workload-major",
+            "targetReplicaRole": "prefer-standby",
+            "maxUploadBandwidthMbps": 250,
+            "retentionDays": 30,
+            "pitrEnabled": true,
+            "defaultCron": "0 1 * * *",
+            "verifyRestoreJob": true
+        }
+    }
+}
