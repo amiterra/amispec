@@ -43,7 +43,7 @@ amispec/
 │   └── specification.adoc           # Normative spec + user guide
 ├── schemas/
 │   ├── component_passport.cue       # ComponentPassport v1
-│   ├── topology_spec.cue            # TopologyBlueprint + CanvasLayout
+│   ├── topology_spec.cue            # TopologyBlueprint
 │   └── schema_test.cue              # Unification assertions
 ├── tests/
 │   ├── valid/                       # Must-pass fixtures
@@ -76,7 +76,6 @@ Instances are root-form YAML (`apiVersion` / `kind` / `metadata` at top level).
 ```bash
 ./scripts/vet.sh passport path/to/passport.yaml
 ./scripts/vet.sh topology path/to/topology.yaml
-./scripts/vet.sh layout   path/to/canvas.layout.yaml
 ```
 
 Or with CUE directly:
@@ -156,7 +155,6 @@ clusters:
 | Binding | Graph edge: consumer → provider slot |
 | clientContract | Provider dictates local proxy sidecar on `127.0.0.1` |
 | Capacity model | Node budgets, reserves (`systemReservedMb`, `committed*`) for placement |
-| CanvasLayout | Optional layout coordinates for visualization tools |
 
 Normative definitions: [docs/specification.adoc](docs/specification.adoc) § Terms.
 

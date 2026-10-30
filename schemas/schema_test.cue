@@ -204,26 +204,3 @@ _testBindingOutbox: #BindingSpec & {
 	outboxSourceRequirement: "database"
 }
 
-// --- #CanvasLayout ---
-
-_testCanvasLayout: #CanvasLayout & {
-	apiVersion: "topology.amispec.io/v1"
-	kind:       "CanvasLayout"
-	clusterId:  "prod"
-	viewport: {x: 0, y: 0, zoom: 1}
-	positions: {
-		web: {x: 10, y: 20}
-	}
-}
-
-_testCanvasZoomDefaultCollapsed: #CanvasLayout & {
-	apiVersion: "topology.amispec.io/v1"
-	kind:       "CanvasLayout"
-	clusterId:  "prod"
-	groups: {
-		g1: {}
-	}
-}
-
-// Expected default collapsed=false
-_testCollapsedDefault: _testCanvasZoomDefaultCollapsed.groups.g1.collapsed & false

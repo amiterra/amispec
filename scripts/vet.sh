@@ -2,7 +2,7 @@
 # vet.sh — structural validation (CUE) of AmiSpec instance documents.
 #
 # Usage:
-#   scripts/vet.sh <passport|topology|layout> <file.yaml>
+#   scripts/vet.sh <passport|topology> <file.yaml>
 #
 # Instance files are root-form documents (apiVersion/kind/metadata at top level),
 # validated against the closed meta-schema definition via cue vet -d.
@@ -22,7 +22,7 @@ if ! command -v "$CUE_BIN" >/dev/null 2>&1; then
 fi
 
 if [ "$#" -ne 2 ]; then
-  echo "usage: $0 <passport|topology|layout> <file.yaml>" >&2
+  echo "usage: $0 <passport|topology> <file.yaml>" >&2
   exit 2
 fi
 
@@ -41,13 +41,8 @@ case "$KIND" in
     # topology_spec references shared types from component_passport.cue
     EXTRA=./schemas/component_passport.cue
     ;;
-  layout)
-    DEF="#CanvasLayout"
-    SCHEMA=./schemas/topology_spec.cue
-    EXTRA=./schemas/component_passport.cue
-    ;;
   *)
-    echo "error: unknown kind '$KIND' (expected passport|topology|layout)" >&2
+    echo "error: unknown kind '$KIND' (expected passport|topology)" >&2
     exit 2
     ;;
 esac

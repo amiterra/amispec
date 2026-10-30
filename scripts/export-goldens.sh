@@ -34,8 +34,7 @@ kind_for() {
   case "$base" in
     passport-*) echo passport ;;
     topology-*) echo topology ;;
-    *layout*) echo layout ;;
-    *) echo passport ;;
+       *) echo passport ;;
   esac
 }
 
@@ -54,11 +53,6 @@ for f in "$VALID"/*.yaml; do
       ;;
     topology)
       DEF='#TopologyBlueprint'
-      SCHEMA=./schemas/topology_spec.cue
-      EXTRA=./schemas/component_passport.cue
-      ;;
-    layout)
-      DEF='#CanvasLayout'
       SCHEMA=./schemas/topology_spec.cue
       EXTRA=./schemas/component_passport.cue
       ;;

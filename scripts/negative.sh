@@ -16,8 +16,7 @@ kind_for() {
   case "$base" in
     passport-*) echo passport ;;
     topology-*) echo topology ;;
-    *layout*) echo layout ;;
-    *) echo passport ;;
+       *) echo passport ;;
   esac
 }
 

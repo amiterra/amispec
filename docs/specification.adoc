@@ -1796,7 +1796,6 @@ topology/                                    # package amispec (isomorphic to a 
     └── prod-eu-central/
         ├── cluster.yaml                     # domain, security, cni, loadBalancers, zones
         ├── nodes.yaml                       # server inventory
-        ├── canvas.layout.yaml               # Layout coordinates only (x, y, zoom) for graph visualization tools
         └── namespaces/                      # directories = securityZones = K8s Namespace
             ├── dmz-public/
             │   └── django-core.yaml         # zone inferred from the path
@@ -1832,21 +1831,6 @@ bindings:
 
 Isolated layout coordinates:
 
-[source,yaml]
-----
-# topology/clusters/prod-eu-central/canvas.layout.yaml
-apiVersion: topology.amispec.io/v1
-kind: CanvasLayout
-clusterId: prod-eu-central
-viewport: { x: 0, y: 0, zoom: 0.95 }
-groups:
-  billing-domain: { collapsed: false }
-positions:
-  django-core: { x: 200, y: 120 }
-  pg-main:     { x: 680, y: 180 }
-----
-
-*Why `canvas.layout.yaml` is separate:* changing presentation coordinates must not pollute infrastructure file history in PRs or trigger manifest rebuilds.
 
 *Why `namespaces/<zone>/`:* the physical path defines zone and Namespace — Git `CODEOWNERS` can grant teams rights per directory.
 
@@ -2345,7 +2329,6 @@ import "list"
 		bucket?:             string
 		exportedAttributes?: [string]: string | int | bool
 		secretRef:           =~"^sops://.*$"
-		canvas?:             {x: number, y: number}
 	}]
 
 	// Non-empty cluster list: a topology without clusters is meaningless
@@ -2508,8 +2491,7 @@ import "list"
 				sourceComponentId?:  string
 				recoveryTargetTime?: *"latest" | string
 			}
-			canvas?: {x: number, y: number}
-		}]
+			}]
 
 		bindings?: [...(#BindingSpec & {
 			from: string
@@ -2531,25 +2513,6 @@ import "list"
 	}]
 }
 
-// Isolated layout geometry (canvas.layout.yaml) for relationship visualization tools.
-// Visual layer: does not affect K8s manifest compilation.
-#CanvasLayout: {
-	apiVersion: "topology.amispec.io/v1"
-	kind:       "CanvasLayout"
-	clusterId:  =~"^[a-z0-9-]+$"
-	viewport?: {
-		x:    number
-		y:    number
-		zoom: number & >0
-	}
-	groups?: [GroupId=string]: {
-		collapsed: bool | *false
-	}
-	positions?: [ComponentId=string]: {
-		x: number
-		y: number
-	}
-}
 ----
 
 === Reference passport: PostgreSQL
@@ -3271,7 +3234,6 @@ externalResources:
     port: 5432
     transport: wireguard-tunnel
     secretRef: "sops://secrets/aws-rds-credentials.enc.yaml"
-    canvas: { x: -320, y: 180 }
 
   - id: aws-sqs-webhooks
     passport: external-aws-sqs
@@ -3283,7 +3245,6 @@ externalResources:
       uri: "https://sqs.eu-central-1.amazonaws.com/123456789012/billing-events"
       region: "eu-central-1"
     secretRef: "sops://secrets/aws-iam-bridge.enc.yaml"
-    canvas: { x: -320, y: 420 }
 
   - id: client-s3-backups
     passport: external-s3-compatible
@@ -3292,7 +3253,6 @@ externalResources:
     transport: direct
     bucket: "example-backups"
     secretRef: "sops://secrets/s3-backup-keys.enc.yaml"
-    canvas: { x: 1100, y: 500 }
 
 clusters:
   - id: prod-eu-central
@@ -3378,7 +3338,6 @@ clusters:
         expose:
           - { endpoint: web, viaBalancer: main-l7-gateway, scope: public, hostname: "example.io" }
           - { endpoint: api, viaBalancer: main-l7-gateway, scope: public, subdomain: "api", securityPolicy: { rateLimitRps: 500 } }
-        canvas: { x: 200, y: 120 }
 
       - id: celery-workers
         passport: stateless-app
@@ -3397,7 +3356,6 @@ clusters:
             cooldownSeconds: 300
             customMetric: { query: "celery_queue_length{queue='default'}", targetValue: 100 }
         resources: { cpuCores: 2, memoryMb: 2048 }
-        canvas: { x: 200, y: 320 }
 
       - id: acme-billing
         passport: ".amispec/private-specs/acme-billing.yaml"
@@ -3414,7 +3372,6 @@ clusters:
         storage: { sizeGb: 100, committedSizeGb: 100, mediaTier: nvme-local }
         expose:
           - { endpoint: admin-ui, viaBalancer: main-l7-gateway, scope: protected, subdomain: "billing-admin" }
-        canvas: { x: 200, y: 500 }
 
       - id: pg-main
         passport: postgresql
@@ -3428,7 +3385,6 @@ clusters:
         resources: { cpuCores: 4, memoryMb: 16384 }
         storage: { sizeGb: 250, committedSizeGb: 250, mediaTier: nvme-local }
         backupTarget: client-s3-backups
-        canvas: { x: 680, y: 180 }
 
       - id: ch-analytics
         passport: clickhouse
@@ -3439,7 +3395,6 @@ clusters:
         resources: { cpuCores: 8, memoryMb: 24576 }
         storage: { sizeGb: 400, committedSizeGb: 400, mediaTier: nvme-local }
         backupTarget: client-s3-backups
-        canvas: { x: 680, y: 380 }
 
       - id: valkey-main
         passport: valkey
@@ -3449,7 +3404,6 @@ clusters:
         topology: { mode: strict-ha, committedReplicas: 3 }
         resources: { cpuCores: 2, memoryMb: 4096 }
         storage: { sizeGb: 10, committedSizeGb: 10, mediaTier: nvme-local }
-        canvas: { x: 680, y: 560 }
 
     bindings:
       - { from: django-core, to: pg-main, toSlot: sql-cluster, asRequirement: database, secretRotationEpoch: 1 }
@@ -3503,7 +3457,6 @@ clusters:
         resources: { cpuCores: 4, memoryMb: 8192 }
         storage: { sizeGb: 250, committedSizeGb: 250, mediaTier: nvme-local }
         bootstrap: { fromBackupTarget: client-s3-backups, sourceComponentId: pg-main, recoveryTargetTime: latest }
-        canvas: { x: 1450, y: 180 }
 
 crossClusterLinks:
   - id: pg-geo-dr-stream
@@ -3987,7 +3940,7 @@ round-trip guarantees are specified in <<reverse-compilation>>.
 
 | `ami import-k8s`
 | Foreign K8s/Flux/Helm manifests
-| Classify by CRD/image signatures → recover `bindings[]`/`expose[]` → synthesize private passports in `.amispec/private-specs/` → lay out the canvas
+| Classify by CRD/image signatures → recover `bindings[]`/`expose[]` → synthesize private passports in `.amispec/private-specs/`
 |===
 
 ==== Core compiler invariants
@@ -4332,7 +4285,7 @@ For a tree produced by a conforming compiler from topology instance `T`:
   * `components[].zone`, `group`, `backupTarget`, `config` are equal to `T` when present;
   * cluster-level `bindings[]` derived from provenance edges match `T`'s edges (`to`, `toSlot`).
 . Synthetic objects introduced only for compilation (KEP-753 sidecars, `tmp-scratch`, hashed Job names) MUST be omitted from `T'`.
-. Fields not represented in manifests (for example `canvas` coordinates, `macros`, `scripts` bodies) MUST NOT be invented; their absence in `T'` is not a round-trip violation.
+. Fields not represented in manifests (for example `macros`, `scripts` bodies) MUST NOT be invented; their absence in `T'` is not a round-trip violation.
 . The decompiler MUST NOT execute runtime scripts or call external APIs.
 
 Note: `compile(decompile(M))` for a *foreign* tree `M` is not required to be
@@ -4511,7 +4464,7 @@ Checklist is *informative*; items are best practice (SHOULD) unless MUST is stat
 . For external migration: `externalResources` + `type: live-migration-replica` + `bootstrap` on the target.
 . Multi-cluster: each cluster has its own `clusterMeshId`; `crossClusterLinks` carry `rpoTargetSec` and `maxBandwidthMbps`.
 . `expose` covers only needed endpoints; `securityPolicy` is enabled for public APIs.
-. Modular layout: `canvas.layout.yaml` is separate from infrastructure files.
+. Layout coordinates are not part of AmiSpec (UI auto-layout only).
 
 === Appendix: invariants mapped to schema fields
 

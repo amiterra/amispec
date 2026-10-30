@@ -55,7 +55,6 @@ import "list"
 		bucket?:      string
 		exportedAttributes?: [string]: string | int | bool
 		secretRef: =~"^sops://.*$"
-		canvas?: {x: number, y: number}
 	}]
 
 	// Non-empty cluster list: a topology without clusters is meaningless
@@ -218,8 +217,7 @@ import "list"
 				sourceComponentId?:  string
 				recoveryTargetTime?: *"latest" | string
 			}
-			canvas?: {x: number, y: number}
-		}]
+			}]
 
 		bindings?: [...(#BindingSpec & {
 			from: string
@@ -241,22 +239,3 @@ import "list"
 	}]
 }
 
-// Isolated canvas UI geometry (canvas.layout.yaml).
-// Visual layer: does not affect K8s manifest compilation.
-#CanvasLayout: {
-	apiVersion: "topology.amispec.io/v1"
-	kind:       "CanvasLayout"
-	clusterId:  =~"^[a-z0-9-]+$"
-	viewport?: {
-		x:    number
-		y:    number
-		zoom: number & >0
-	}
-	groups?: [GroupId=string]: {
-		collapsed: bool | *false
-	}
-	positions?: [ComponentId=string]: {
-		x: number
-		y: number
-	}
-}

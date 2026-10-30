@@ -41,8 +41,7 @@ for f in "$ROOT"/tests/valid/*.yaml; do
   case "$base" in
     passport-*) kind=passport ;;
     topology-*) kind=topology ;;
-    *layout*) kind=layout ;;
-    *) kind=passport ;;
+        *) kind=passport ;;
   esac
   if "$ROOT/scripts/vet.sh" "$kind" "$f"; then
     echo "PASS valid: $base"
