@@ -61,8 +61,11 @@ import "list"
 	clusters: [...{
 		id:                 =~"^[a-z0-9-]+$"
 		name:               string
+		// Base DNS zone of the cluster; `expose[].subdomain` expands to
+		// `<subdomain>.<domain>` (normative FQDN semantics).
 		domain:             string
-		k3sChannel:         string | *"v1.31"
+		// k3s release channel pin, aligned with the product image pin.
+		k3sChannel:         string | *"v1.37"
 		fleetCount?:        int & >=1
 		maintenanceWindow?: string
 
@@ -117,6 +120,10 @@ import "list"
 		loadBalancers: [...{
 			id:            string
 			layer:         "edge-proxy" | "l7-gateway" | "l4-balancer"
+			// Recommended provider dictionary (open string — the compiler registry
+			// is the authority): "cilium-envoy" | "cilium-ingress" | "cilium-l4-bgp"
+			// | "k3s-servicelb" | "cloudflare" | "fastly". Any other value is
+			// rejected by amispec-validate / amispec-compile (fail-fast, no stub).
 			provider:      string
 			upstreamEdge?: string
 			trustedProxySource?: string | [...string]
@@ -199,13 +206,18 @@ import "list"
 				endpoint:    string
 				viaBalancer: string
 				scope:       "public" | "protected"
+				// Expands to FQDN `<subdomain>.<clusters[].domain>`.
 				subdomain?:  string
+				// Apex / external domain, used as-is (overrides subdomain).
 				hostname?:   string
 				pathPrefix?: string
 				securityPolicy?: {
 					clientAuth?: *"none" | "oidc" | "mtls"
 					corsAllowedOrigins?: [...string]
 					rateLimitRps?: int
+					// Explicitly acknowledge `scope: protected` without client
+					// authentication (validator emits a warning instead of error).
+					allowAnonymous?: bool
 				}
 			}]
 

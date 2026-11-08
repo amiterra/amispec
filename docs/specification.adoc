@@ -1308,7 +1308,7 @@ clusters:
   - id: prod-eu-central
     name: "Production EU-Central"
     domain: "example.io"
-    k3sChannel: "v1.31"
+    k3sChannel: "v1.37"
     fleetCount: 10                     # for a fleet of homogeneous edge clusters
     maintenanceWindow: "Sun 02:00-05:00 UTC"
     security:
@@ -1389,7 +1389,7 @@ sum(allocatedStorageGb) <= disk.sizeGb * (1 - lvmSnapshotReservePercent/100) - s
     loadBalancers:
       - id: edge-cloudflare
         layer: edge-proxy               # edge-proxy | l7-gateway | l4-balancer
-        provider: cloudflare            # arbitrary provider identifier
+        provider: cloudflare            # documented dictionary, see "Exposure contract"
       - id: main-l7
         layer: l7-gateway
         provider: cilium-envoy
@@ -1504,7 +1504,7 @@ sum(allocatedStorageGb) <= disk.sizeGb * (1 - lvmSnapshotReservePercent/100) - s
 
 *Why `licenseSecretRef` is required when `requiresLicenseKey: true`:* without a sops secret binding a commercial image goes to `ImagePullBackOff` / refuses to start without a key.
 
-*Why `securityPolicy` on `expose`:* payment gateways need mTLS/CORS at the edge, not in application code.
+*Why `securityPolicy` on `expose`:* payment gateways need mTLS/CORS at the edge, not in application code. `securityPolicy.allowAnonymous: true` explicitly acknowledges a `scope: protected` route without client authentication (the validator warns instead of rejecting).
 
 === Bindings and data flows
 
@@ -1647,6 +1647,66 @@ Publishing routes:
           - { endpoint: api,  viaBalancer: main-l7, scope: public,  subdomain: "api",
               pathPrefix: "/api/v2", securityPolicy: { clientAuth: oidc, rateLimitRps: 200 } }
 ----
+
+==== Exposure contract (normative)
+
+`expose[]` is a *property of the topology*, not of the application. The compiler
+resolves each entry to a concrete edge route; the application never names an
+ingress controller.
+
+Host resolution (`expose[].hostname` / `expose[].subdomain`)::
+  `hostname` is used as-is (apex or external domain). `subdomain` expands to
+  the FQDN `<subdomain>.<clusters[].domain>`. If neither is set, the effective
+  host is `<component-id>.<domain>` (ADR 0009 virtual-host convention).
+  Duplicate `(host, pathPrefix)` pairs within one cluster are a validation error.
+
+Backend port (`expose[].endpoint`)::
+  `endpoint` names an `interfaces.endpoints[].name` entry of the component
+  passport; the route backend port is that entry's `containerPort` (portless
+  composition, ADR 0009). The compiler never hardcodes port `80`.
+
+Balancers (`expose[].viaBalancer`)::
+  MUST resolve to a `loadBalancers[].id` of the same cluster. HTTP-level
+  exposure (`hostname`/`subdomain`/`pathPrefix`/`securityPolicy`) requires
+  `layer: l7-gateway`; `layer: edge-proxy` is never referenced directly
+  (chain it via `upstreamEdge`); `layer: l4-balancer` accepts only host-less
+  L4 exposure entries.
+
+Provider dictionary (`loadBalancers[].provider`)::
+  The string stays open (future providers are registry entries only), but the
+  compiler/validator reject unknown values — no silent stubs. Recommended
+  values:
++
+[cols="1,2,3", options="header"]
+|===
+| provider | layer | Materialization
+
+| `cilium-envoy` | `l7-gateway` | Cilium Envoy + Gateway API (default for L7)
+| `cilium-ingress` | `l7-gateway` | Cilium Ingress (Ingress API, Day-1 path)
+| `cilium-l4-bgp` | `l4-balancer` | L4 `Service type: LoadBalancer` + DSR/Maglev
+| `k3s-servicelb` | `l4-balancer` | klipper-lb emergency/lab path (leaves headless base)
+| `cloudflare` / `fastly` | `edge-proxy` | no in-cluster objects; trust borders + DNS expectations
+|===
++
+`(layer, provider)` mismatches (e.g. `cilium-envoy` on `l4-balancer`) are
+validation errors.
+
+Scope and authentication::
+  `scope: protected` requires `securityPolicy.clientAuth != none`, or an
+  explicit `securityPolicy.allowAnonymous: true` (validator warns — the open
+  edge is acknowledged, not accidental). `clientAuth: oidc` additionally
+  requires an `oidc-protection` binding to the component.
+
+TLS (`loadBalancers[].tls`)::
+  `letsencrypt-http01` / `letsencrypt-dns01-wildcard` / `letsencrypt-auto`
+  compile cert-manager + issuer + certificates; `custom-secret` expects a
+  pre-provisioned Secret `<lb-id>-tls` (SOPS/vault — never compiled);
+  `none` serves plaintext (warning for `scope: protected`).
+
+Trigger::
+  Balancer artifacts are compiled **only** when `Σ expose[] > 0` over the
+  cluster. A topology without `expose[]` produces zero balancing objects —
+  the cluster stays exactly as after `ami init` (headless baseline).
 
 === Multi-cluster and migrations
 
@@ -2335,8 +2395,11 @@ import "list"
 	clusters: [...{
 		id:                 =~"^[a-z0-9-]+$"
 		name:               string
+		// Base DNS zone of the cluster; `expose[].subdomain` expands to
+		// `<subdomain>.<domain>` (normative FQDN semantics).
 		domain:             string
-		k3sChannel:         string | *"v1.31"
+		// k3s release channel pin, aligned with the product image pin.
+		k3sChannel:         string | *"v1.37"
 		fleetCount?:        int & >=1
 		maintenanceWindow?: string
 
@@ -2391,6 +2454,10 @@ import "list"
 		loadBalancers: [...{
 			id:                  string
 			layer:               "edge-proxy" | "l7-gateway" | "l4-balancer"
+			// Recommended provider dictionary (open string — the compiler registry
+			// is the authority): "cilium-envoy" | "cilium-ingress" | "cilium-l4-bgp"
+			// | "k3s-servicelb" | "cloudflare" | "fastly". Any other value is
+			// rejected by amispec-validate / amispec-compile (fail-fast, no stub).
 			provider:            string
 			upstreamEdge?:       string
 			trustedProxySource?: string | [...string]
@@ -2473,13 +2540,18 @@ import "list"
 				endpoint:    string
 				viaBalancer: string
 				scope:       "public" | "protected"
+				// Expands to FQDN `<subdomain>.<clusters[].domain>`.
 				subdomain?:  string
+				// Apex / external domain, used as-is (overrides subdomain).
 				hostname?:   string
 				pathPrefix?: string
 				securityPolicy?: {
 					clientAuth?:         *"none" | "oidc" | "mtls"
 					corsAllowedOrigins?: [...string]
 					rateLimitRps?:       int
+					// Explicitly acknowledge `scope: protected` without client
+					// authentication (validator emits a warning instead of error).
+					allowAnonymous?:     bool
 				}
 			}]
 
@@ -3258,7 +3330,7 @@ clusters:
   - id: prod-eu-central
     name: "Production EU-Central"
     domain: "example.io"
-    k3sChannel: "v1.31"
+    k3sChannel: "v1.37"
     maintenanceWindow: "Sun 02:00-05:00 UTC"
     security:
       sopsRecipients:
@@ -3420,7 +3492,7 @@ clusters:
   - id: dr-eu-west
     name: "Disaster Recovery EU-West"
     domain: "dr.example.io"
-    k3sChannel: "v1.31"
+    k3sChannel: "v1.37"
     maintenanceWindow: "Sun 03:00-06:00 UTC"
     security:
       sopsRecipients:

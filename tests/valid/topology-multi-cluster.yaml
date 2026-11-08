@@ -16,7 +16,7 @@ clusters:
   - id: prod-eu-central
     name: Production EU
     domain: example.io
-    k3sChannel: v1.31
+    k3sChannel: v1.37
     maintenanceWindow: Sun 02:00-05:00 UTC
     security:
       sopsRecipients:

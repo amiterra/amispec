@@ -185,6 +185,70 @@ _testTopologyMinimal: #TopologyBlueprint & {
 
 _testTopologyCidrDefault: _testTopologyMinimal.clusters[0].cni.wireguardEncryption & true
 _testTopologyFqdnDefault: _testTopologyMinimal.clusters[0].cni.fqdnCacheMinTtlSec & 3600
+_testTopologyK3sChannelDefault: _testTopologyMinimal.clusters[0].k3sChannel & "v1.37"
+
+// --- expose[].securityPolicy.allowAnonymous (explicit protected-without-auth) ---
+
+_testExposeAllowAnonymous: #TopologyBlueprint & {
+	apiVersion: "topology.amispec.io/v1"
+	kind:       "TopologyBlueprint"
+	metadata: {
+		projectId:    "demo"
+		organization: "example"
+	}
+	clusters: [{
+		id:     "local"
+		name:   "Local"
+		domain: "example.local"
+		security: {
+			sopsRecipients: ["age1examplepublickey00000000000000000000000000000000000000"]
+		}
+		cni: {
+			engine:        "cilium-ebpf"
+			clusterMeshId: 1
+		}
+		nodes: [{
+			id:       "n1"
+			role:     "control-plane-worker"
+			hardware: {
+				cpuCores: 2
+				memoryMb: 4096
+				disks: [{
+					name:   "d0"
+					tier:   "nvme-local"
+					sizeGb: 50
+				}]
+			}
+		}]
+		loadBalancers: [{
+			id:       "main-l7"
+			layer:    "l7-gateway"
+			provider: "cilium-envoy"
+		}]
+		components: [{
+			id:          "web"
+			passport:    "stateless-app"
+			version:     "1.0.0"
+			passportRev: 1
+			topology: {
+				mode: "standalone"
+			}
+			resources: {
+				cpuCores: 1
+				memoryMb: 256
+			}
+			expose: [{
+				endpoint:    "web"
+				viaBalancer: "main-l7"
+				scope:       "protected"
+				subdomain:   "admin"
+				securityPolicy: {
+					allowAnonymous: true
+				}
+			}]
+		}]
+	}]
+}
 
 // --- #BindingSpec ---
 

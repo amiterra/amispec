@@ -1,0 +1,30 @@
+# Negative fixture: loadBalancers[].provider is not an implemented registry
+# entry (rule: lb-provider-unknown — fail-fast, no silent stub).
+apiVersion: topology.amispec.io/v1
+kind: TopologyBlueprint
+metadata:
+  projectId: demo-blog
+  organization: example-org
+clusters:
+  - id: local
+    name: Demo Cluster
+    domain: example.local
+    security:
+      sopsRecipients:
+        - age1examplepublickey00000000000000000000000000000000000000
+    cni:
+      engine: cilium-ebpf
+      clusterMeshId: 1
+      kubeProxyReplacement: true
+    nodes:
+      - id: node-1
+        role: control-plane-worker
+        pricingTier: standard-node
+        hardware:
+          cpuCores: 2
+          memoryMb: 4096
+          disks:
+            - { name: nvme0n1, tier: nvme-local, sizeGb: 50 }
+    loadBalancers:
+      - { id: main-l7, layer: l7-gateway, provider: nginx-custom }
+    components: []

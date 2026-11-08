@@ -22,7 +22,7 @@
             "id": "local",
             "name": "Demo Cluster",
             "domain": "example.local",
-            "k3sChannel": "v1.31",
+            "k3sChannel": "v1.37",
             "security": {
                 "sopsRecipients": [
                     "age1examplepublickey00000000000000000000000000000000000000"
