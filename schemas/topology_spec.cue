@@ -132,6 +132,11 @@ import "list"
 			proxyProtocolV2?: bool
 			http3Quic?:       bool | *true
 			tls?:             *"letsencrypt-auto" | "letsencrypt-dns01-wildcard" | "letsencrypt-http01" | "custom-secret" | "none"
+			// How external clients physically reach the VIP. Absent behaves
+			// like "none" (fail-closed): the compiler emits no ARP/BGP policy
+			// and warns. "l2-announce" materializes a scoped
+			// CiliumL2AnnouncementPolicy; "bgp" is a Day-2 prerequisite.
+			vipReachability?: "l2-announce" | "bgp" | "none"
 		}]
 
 		securityZones?: [...{
@@ -203,8 +208,9 @@ import "list"
 			}
 
 			expose?: [...{
-				endpoint:    string
-				viaBalancer: string
+				endpoint: string
+				// One balancer id, or several for HA exposure (L7 only).
+				viaBalancer: string | [_, ...string]
 				scope:       "public" | "protected"
 				// Expands to FQDN `<subdomain>.<clusters[].domain>`.
 				subdomain?:  string

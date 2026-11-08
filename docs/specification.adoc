@@ -1666,11 +1666,22 @@ Backend port (`expose[].endpoint`)::
   composition, ADR 0009). The compiler never hardcodes port `80`.
 
 Balancers (`expose[].viaBalancer`)::
-  MUST resolve to a `loadBalancers[].id` of the same cluster. HTTP-level
-  exposure (`hostname`/`subdomain`/`pathPrefix`/`securityPolicy`) requires
+  MUST resolve to `loadBalancers[].id` values of the same cluster. A single
+  id, or a non-empty list for HA exposure (several edge Gateways — L7 only;
+  multi-via on `l4-balancer` is rejected). HTTP-level exposure
+  (`hostname`/`subdomain`/`pathPrefix`/`securityPolicy`) requires
   `layer: l7-gateway`; `layer: edge-proxy` is never referenced directly
   (chain it via `upstreamEdge`); `layer: l4-balancer` accepts only host-less
   L4 exposure entries.
+
+VIP reachability (`loadBalancers[].vipReachability`)::
+  Declared network prerequisite (Design Doc 0025 §3.11 — never inferred):
+  `l2-announce` compiles a balancer-scoped `CiliumL2AnnouncementPolicy`
+  (ARP; one active node per VIP, failover ~10-20s), `bgp` is a Day-2
+  peering prerequisite (compiler emits only a checklist), `none` emits
+  nothing. Absent behaves like `none` plus a compile warning (fail-closed).
+  `l2-announce` combined with `upstreamEdge` is a compile error (origin
+  hiding contradicts LAN announcements).
 
 Provider dictionary (`loadBalancers[].provider`)::
   The string stays open (future providers are registry entries only), but the
@@ -2466,6 +2477,8 @@ import "list"
 			proxyProtocolV2?:    bool
 			http3Quic?:          bool | *true
 			tls?:                *"letsencrypt-auto" | "letsencrypt-dns01-wildcard" | "letsencrypt-http01" | "custom-secret" | "none"
+			// Declared VIP reachability; absent = "none" (fail-closed, warning).
+			vipReachability?:    "l2-announce" | "bgp" | "none"
 		}]
 
 		securityZones?: [...{
@@ -2538,7 +2551,7 @@ import "list"
 
 			expose?: [...{
 				endpoint:    string
-				viaBalancer: string
+				viaBalancer: string | [_, ...string]
 				scope:       "public" | "protected"
 				// Expands to FQDN `<subdomain>.<clusters[].domain>`.
 				subdomain?:  string

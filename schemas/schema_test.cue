@@ -250,6 +250,65 @@ _testExposeAllowAnonymous: #TopologyBlueprint & {
 	}]
 }
 
+_testTopologyVipReachability: #TopologyBlueprint & {
+	apiVersion: "topology.amispec.io/v1"
+	kind:       "TopologyBlueprint"
+	metadata: {
+		projectId:    "exposure-demo"
+		organization: "example-org"
+	}
+	clusters: [{
+		id:     "local"
+		name:   "Demo"
+		domain: "example.io"
+		cni: {
+			engine:          "cilium-ebpf"
+			clusterMeshId:   1
+		}
+		nodes: [{
+			id:            "n1"
+			role:          "control-plane-worker"
+			pricingTier:   "standard-node"
+			hardware: {
+				cpuCores:  2
+				memoryMb:  4096
+				disks: []
+			}
+		}]
+		loadBalancers: [{
+			id:               "main-l7"
+			layer:            "l7-gateway"
+			provider:         "cilium-envoy"
+			vipReachability:  "l2-announce"
+		}, {
+			id:               "standby-l7"
+			layer:            "l7-gateway"
+			provider:         "cilium-envoy"
+			vipReachability:  "none"
+		}]
+		components: [{
+			id:          "web"
+			passport:    "stateless-app"
+			version:     "1.0.0"
+			passportRev: 1
+			topology: {
+				mode: "standalone"
+			}
+			resources: {
+				cpuCores: 1
+				memoryMb: 256
+			}
+			expose: [{
+				endpoint: "web"
+				// HA: the same endpoint behind two edge balancers.
+				viaBalancer: ["main-l7", "standby-l7"]
+				scope:       "public"
+				hostname:    "example.io"
+			}]
+		}]
+	}]
+}
+
 // --- #BindingSpec ---
 
 _testBinding: #BindingSpec & {
