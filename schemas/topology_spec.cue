@@ -59,11 +59,11 @@ import "list"
 
 	// Non-empty cluster list: a topology without clusters is meaningless
 	clusters: [...{
-		id:                 =~"^[a-z0-9-]+$"
-		name:               string
+		id:   =~"^[a-z0-9-]+$"
+		name: string
 		// Base DNS zone of the cluster; `expose[].subdomain` expands to
 		// `<subdomain>.<domain>` (normative FQDN semantics).
-		domain:             string
+		domain: string
 		// k3s release channel pin, aligned with the product image pin.
 		k3sChannel:         string | *"v1.37"
 		fleetCount?:        int & >=1
@@ -118,8 +118,8 @@ import "list"
 		}]
 
 		loadBalancers: [...{
-			id:            string
-			layer:         "edge-proxy" | "l7-gateway" | "l4-balancer"
+			id:    string
+			layer: "edge-proxy" | "l7-gateway" | "l4-balancer"
 			// Recommended provider dictionary (open string — the compiler registry
 			// is the authority): "cilium-envoy" | "cilium-ingress" | "cilium-l4-bgp"
 			// | "k3s-servicelb" | "cloudflare" | "fastly". Any other value is
@@ -211,9 +211,9 @@ import "list"
 				endpoint: string
 				// One balancer id, or several for HA exposure (L7 only).
 				viaBalancer: string | [_, ...string]
-				scope:       "public" | "protected"
+				scope: "public" | "protected"
 				// Expands to FQDN `<subdomain>.<clusters[].domain>`.
-				subdomain?:  string
+				subdomain?: string
 				// Apex / external domain, used as-is (overrides subdomain).
 				hostname?:   string
 				pathPrefix?: string
@@ -235,7 +235,7 @@ import "list"
 				sourceComponentId?:  string
 				recoveryTargetTime?: *"latest" | string
 			}
-			}]
+		}]
 
 		bindings?: [...(#BindingSpec & {
 			from: string
@@ -256,4 +256,3 @@ import "list"
 		rpoTargetSec?:     int
 	}]
 }
-

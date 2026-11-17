@@ -82,7 +82,7 @@
             "components": [
                 {
                     "id": "pg-main",
-                    "passport": "postgresql",
+                    "passport": "test-org/postgresql",
                     "version": "18.0.0",
                     "passportRev": 6,
                     "zone": "dmz-public",
@@ -156,7 +156,7 @@
             "components": [
                 {
                     "id": "pg-dr",
-                    "passport": "postgresql",
+                    "passport": "test-org/postgresql",
                     "version": "18.0.0",
                     "passportRev": 6,
                     "topology": {

@@ -3,7 +3,9 @@
     "kind": "ComponentPassport",
     "metadata": {
         "id": "demo-worker",
-        "name": "Demo Queue Worker",
+        "publisher": "test-org",
+        "title": "Demo Queue Worker",
+        "description": "Test fixture passport",
         "version": "1.0.0",
         "passportRev": 1,
         "category": "application",
@@ -37,6 +39,7 @@
         "priorityClass": "background-batch",
         "container": {
             "image": "ghcr.io/example/demo-worker:1.0.0",
+            "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "pullSecretRequired": false,
             "readOnlyRootFilesystem": true,
             "zeroEndpoints": false

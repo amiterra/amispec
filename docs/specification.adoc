@@ -490,8 +490,10 @@ A passport is a “smart service class”. The smallest meaningful passport:
 apiVersion: catalog.amispec.io/v1
 kind: ComponentPassport
 metadata:
-  id: demo-worker
-  name: "Demo Queue Worker"
+  publisher: test-org                   # slug, see golden requirements GR-META-002
+  id: demo-worker                       # slug; no version suffix (GR-META-003)
+  title: "Demo Queue Worker"            # display only (GR-META-007)
+  description: "Demo queue worker fixture"
   version: "1.0.0"
   passportRev: 1
   category: application
@@ -598,9 +600,11 @@ The passport is reviewed block by block — from metadata to operations. Whereve
 [source,yaml]
 ----
 metadata:
-  id: postgresql                      # ^[a-z0-9-]+$
-  name: "PostgreSQL HA"
-  version: "18.0.0"                   # SemVer software version
+  publisher: amiterra                   # ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ (GR-META-002)
+  id: postgresql                      # ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$, no version suffix
+  title: "PostgreSQL HA"              # display only (GR-META-007)
+  description: "Highly available PostgreSQL deployment"
+  version: "18.0.0"                   # 2-4 numeric segments (GR-VER-002)
   passportRev: 6                      # passport revision (>=1)
   category: database                  # database | analytics | cache | message-queue |
                                       # application | ai-ml | gateway | observability |
@@ -1037,7 +1041,7 @@ Key design decisions:
       multiBind: false                  # allow multiple bindings of the same capability
       dependencyStage: infrastructure-ready
                                        # infrastructure-ready | runtime-parallel
-      versionConstraint: ">=15.0.0"
+      version: ">=15.0.0"
       mountAsFilesPath: "/var/run/amispec/bindings/database"
       envMapping:
         DATABASE_RW_URL: "${exported.uri}"
@@ -2237,7 +2241,7 @@ package amispec
 			optional:           bool | *false
 			multiBind:          bool | *false
 			dependencyStage:    *"infrastructure-ready" | "runtime-parallel"
-			versionConstraint?: string
+			version?: string
 			mountAsFilesPath?:  string
 			envMapping: [EnvVar=string]: string
 		}
@@ -3230,7 +3234,7 @@ interfaces:
       capability: postgres-sql
       optional: false
       dependencyStage: infrastructure-ready
-      versionConstraint: ">=15.0.0"
+      version: ">=15.0.0"
       envMapping:
         BILLING_DB_HOST: "${exported.host}"
         BILLING_DB_PORT: "${exported.port}"

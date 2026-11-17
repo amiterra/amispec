@@ -38,17 +38,18 @@ clusters:
         provider: cilium-envoy
     components:
       - id: web
-        passport: stateless-app
+        passport: test-org/stateless-app
         version: 1.0.0
         passportRev: 1
         workloadOverride:
           image: ghcr.io/example/blog-web:1.0.0
+          imageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         topology: { mode: standalone, replicas: 1 }
         resources: { cpuCores: 1, memoryMb: 512 }
         expose:
           - { endpoint: web, viaBalancer: main-l7, scope: public }
       - id: db
-        passport: postgresql
+        passport: test-org/postgresql
         version: 18.0.0
         passportRev: 6
         topology: { mode: standalone }

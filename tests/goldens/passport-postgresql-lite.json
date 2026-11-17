@@ -3,7 +3,9 @@
     "kind": "ComponentPassport",
     "metadata": {
         "id": "postgresql",
-        "name": "PostgreSQL HA",
+        "publisher": "test-org",
+        "title": "PostgreSQL HA",
+        "description": "Test fixture passport",
         "version": "18.0.0",
         "passportRev": 6,
         "category": "database",

@@ -82,7 +82,9 @@ _testPassportMinimal: #ComponentPassport & {
 	kind:       "ComponentPassport"
 	metadata: {
 		id:          "demo-worker"
-		name:        "Demo Worker"
+		publisher:   "test-org"
+		title:       "Demo Worker"
+		description: "Demo worker fixture"
 		version:     "1.0.0"
 		passportRev: 1
 		category:    "application"
@@ -183,8 +185,8 @@ _testTopologyMinimal: #TopologyBlueprint & {
 	}]
 }
 
-_testTopologyCidrDefault: _testTopologyMinimal.clusters[0].cni.wireguardEncryption & true
-_testTopologyFqdnDefault: _testTopologyMinimal.clusters[0].cni.fqdnCacheMinTtlSec & 3600
+_testTopologyCidrDefault:       _testTopologyMinimal.clusters[0].cni.wireguardEncryption & true
+_testTopologyFqdnDefault:       _testTopologyMinimal.clusters[0].cni.fqdnCacheMinTtlSec & 3600
 _testTopologyK3sChannelDefault: _testTopologyMinimal.clusters[0].k3sChannel & "v1.37"
 
 // --- expose[].securityPolicy.allowAnonymous (explicit protected-without-auth) ---
@@ -208,8 +210,8 @@ _testExposeAllowAnonymous: #TopologyBlueprint & {
 			clusterMeshId: 1
 		}
 		nodes: [{
-			id:       "n1"
-			role:     "control-plane-worker"
+			id:   "n1"
+			role: "control-plane-worker"
 			hardware: {
 				cpuCores: 2
 				memoryMb: 4096
@@ -262,29 +264,29 @@ _testTopologyVipReachability: #TopologyBlueprint & {
 		name:   "Demo"
 		domain: "example.io"
 		cni: {
-			engine:          "cilium-ebpf"
-			clusterMeshId:   1
+			engine:        "cilium-ebpf"
+			clusterMeshId: 1
 		}
 		nodes: [{
-			id:            "n1"
-			role:          "control-plane-worker"
-			pricingTier:   "standard-node"
+			id:          "n1"
+			role:        "control-plane-worker"
+			pricingTier: "standard-node"
 			hardware: {
-				cpuCores:  2
-				memoryMb:  4096
+				cpuCores: 2
+				memoryMb: 4096
 				disks: []
 			}
 		}]
 		loadBalancers: [{
-			id:               "main-l7"
-			layer:            "l7-gateway"
-			provider:         "cilium-envoy"
-			vipReachability:  "l2-announce"
+			id:              "main-l7"
+			layer:           "l7-gateway"
+			provider:        "cilium-envoy"
+			vipReachability: "l2-announce"
 		}, {
-			id:               "standby-l7"
-			layer:            "l7-gateway"
-			provider:         "cilium-envoy"
-			vipReachability:  "none"
+			id:              "standby-l7"
+			layer:           "l7-gateway"
+			provider:        "cilium-envoy"
+			vipReachability: "none"
 		}]
 		components: [{
 			id:          "web"
@@ -302,8 +304,8 @@ _testTopologyVipReachability: #TopologyBlueprint & {
 				endpoint: "web"
 				// HA: the same endpoint behind two edge balancers.
 				viaBalancer: ["main-l7", "standby-l7"]
-				scope:       "public"
-				hostname:    "example.io"
+				scope:    "public"
+				hostname: "example.io"
 			}]
 		}]
 	}]
@@ -326,4 +328,3 @@ _testBindingOutbox: #BindingSpec & {
 	deliveryGuarantee:       "transactional-outbox"
 	outboxSourceRequirement: "database"
 }
-

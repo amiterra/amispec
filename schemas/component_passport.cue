@@ -7,6 +7,8 @@
 
 package amispec
 
+import "strings"
+
 // Polymorphic kernel parameter (sysctl / sysfs) with profile merge strategy
 #TunableValue: {
 	value:         int | string | bool
@@ -65,8 +67,8 @@ package amispec
 	lvmOptions: {
 		provisioner:       *"topolvm-nvme" | "local-path" | "external-csi"
 		volumeBindingMode: *"WaitForFirstConsumer" | "Immediate"
-		mountFlags:        [...#MountFlag] | *["noatime", "nodiratime"]
-		filesystem:        *"xfs" | "ext4"
+		mountFlags: [...#MountFlag] | *["noatime", "nodiratime"]
+		filesystem:         *"xfs" | "ext4"
 		emergencyBallastMb: int | *1024
 	}
 }
@@ -76,17 +78,31 @@ package amispec
 	kind:       "ComponentPassport"
 
 	// 1. Metadata, distribution, visualization
+	// Field requirements: docs/components/catalog/schema-golden-requirements.adoc
+	// (GR-META-001/002/003/007/008, GR-VER-001/002). CUE is the normative schema;
+	// `amispec-validate` mirrors it and both are contract-tested on shared fixtures.
 	metadata: {
-		id:          =~"^[a-z0-9-]+$"
-		name:        string
-		version:     string
+		// GR-META-001/002: two-level identity `<publisher>/<id>`, slug grammar,
+		// edges alphanumeric, `--` allowed, no dots/underscores; length 1..32 / 1..40.
+		publisher: string & =~#"^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"#
+		id:        string & =~#"^[a-z0-9]([a-z0-9-]{0,36}[a-z0-9])?$"# & !~#"-[0-9]+(\.[0-9]+)*$"# // GR-META-003: no version suffix
+		// GR-META-007: display title — single line, trimmed, no control/bidi, 1..80 runes.
+		title:       string & =~#"^[^\s](?:[^\n\r]*[^\s])?$"# & !~#"[\p{Cc}\x{202a}-\x{202e}\x{2066}-\x{2069}]"#
+		_titleRunes: len(strings.Runes(title)) & >=1 & <=80
+		// GR-META-008: product signature — single line, trimmed, no control/bidi, 1..300 runes.
+		description:       string & =~#"^[^\s](?:[^\n\r]*[^\s])?$"# & !~#"[\p{Cc}\x{202a}-\x{202e}\x{2066}-\x{2069}]"#
+		_descriptionRunes: len(strings.Runes(description)) & >=1 & <=300
+		// GR-VER-001/002: optional (derivable from a version-ful image tag);
+		// format 2-4 numeric segments + optional suffix.
+		version?:    string & =~#"^[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?$"#
 		passportRev: int & >=1
 		category:    "database" | "analytics" | "cache" | "message-queue" | "application" | "ai-ml" | "gateway" | "observability" | "storage" | "security" | "external"
 		archetype:   "stateless-app" | "stateful-service" | "operator-cluster" | "edge-gateway" | "external-bridge" | "scheduled-job"
 
 		distribution: {
-			tier:    *"open-core" | "private-custom"   // MVP: open vs private passport
-			license: string | *"Apache-2.0"
+			tier: *"open-core" | "private-custom" // MVP: open vs private passport
+			// GR-META-011: SPDX id or expression (ids combined with OR/AND/WITH).
+			license: string & =~#"^[A-Za-z0-9.()+-]+( (OR|AND|WITH) [A-Za-z0-9.()+-]+)*$"# | *"Apache-2.0"
 			vendor?: {
 				name:               string
 				requiresLicenseKey: bool | *false
@@ -94,7 +110,8 @@ package amispec
 		}
 
 		canvasUI: {
-			icon:        string
+			// GR-META-012: console icon set is keyed by kebab slug.
+			icon:        string & =~#"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"#
 			accentColor: =~"^#[0-9a-fA-F]{6}$"
 			nodeShape:   *"standard-card" | "database-cylinder" | "queue-pipe" | "gateway-shield" | "external-cloud"
 			badges?: [...string]
@@ -164,8 +181,10 @@ package amispec
 		}
 
 		container?: {
-			image:                  string
-			imageDigest?:           =~"^sha256:[a-f0-9]{64}$"
+			image: string
+			// GR-IMG-001: every image is a canonical ref + mandatory digest
+			// (multi-arch index digest; label-safe pin budget is GR-PIN-002).
+			imageDigest:            =~#"^sha256:[a-f0-9]{64}$"#
 			pullSecretRequired:     bool | *false
 			readOnlyRootFilesystem: bool | *true
 			securityContext?: {
@@ -179,9 +198,9 @@ package amispec
 		}
 
 		companions?: [...{
-			name:         string
-			image:        string
-			imageDigest?: =~"^sha256:[a-f0-9]{64}$"
+			name:        string
+			image:       string
+			imageDigest: =~#"^sha256:[a-f0-9]{64}$"#
 			ports?: [...int]
 			command?: [...string]
 			args?: [...string]
@@ -274,7 +293,15 @@ package amispec
 			slot:       string
 			capability: string
 			dialect?:   string
-			version:    string
+			// GR-VER-001: optional, defaults to metadata.version (enforced downstream).
+			version?: string & =~#"^[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?$"#
+			// GR-CRED-002: fulfillment declaration; grant vocabulary is owned by
+			// the capability contract, so verbs stay free strings here.
+			access?: {
+				fulfillment?: [...string]
+				columnLevel?: bool
+				plugins?: [...string]
+			}
 
 			clientContract?: {
 				injectWhenModes: [...string]
@@ -317,14 +344,32 @@ package amispec
 		}]
 
 		requires: [SlotName=string]: {
-			capability:         string
-			optional:           bool | *false
-			multiBind:          bool | *false
-			dependencyStage:    *"infrastructure-ready" | "runtime-parallel"
-			versionConstraint?: string
-			mountAsFilesPath?:  string
+			capability:      string
+			optional:        bool | *false
+			multiBind:       bool | *false
+			dependencyStage: *"infrastructure-ready" | "runtime-parallel"
+			// GR-VER-003: comparators `= != > >= < <=` AND-ed by spaces; `*` = any.
+			version?:          string & =~#"^\s*(\*|([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?)(\s+([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?))*)\s*$"#
+			mountAsFilesPath?: string
 			envMapping: [EnvVar=string]: string
 		}
+	}
+
+	// 5b. Credential processes: process -> access contract (GR-CRED-001..005).
+	// Process names belong to the application; the grant vocabulary is owned by
+	// the capability contract, so verbs/resources stay free strings here.
+	// Dangerous escalations are forbidden platform-wide (GR-CRED-003).
+	processes?: [ProcessName=string]: {
+		// "deploy" marks the migration/deploy process; `ddl` grants require it.
+		role?: "deploy" | "runtime"
+		uses: [...{
+			slot: string
+			grants: [...{
+				verbs: [...string & !~#"(?i)^(superuser|createrole|replication)$"#]
+				resources: [...string]
+			}]
+			plugins?: [...string]
+		}]
 	}
 
 	// 6. Hardware, storage, kernel
@@ -411,11 +456,10 @@ package amispec
 			}
 		}
 
-
 		day2Actions?: [...{
-			id:       string
-			title:    string
-			category: "first-aid" | "maintenance" | "migration-cutover" | "scaling"
+			id:                      string
+			title:                   string
+			category:                "first-aid" | "maintenance" | "migration-cutover" | "scaling"
 			requiresConfirmation:    bool | *true
 			cooldownSeconds:         int | *60
 			ttlSecondsAfterFinished: int | *3600
