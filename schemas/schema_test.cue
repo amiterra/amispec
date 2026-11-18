@@ -317,6 +317,15 @@ _testBinding: #BindingSpec & {
 	to:                  "pg-main"
 	toSlot:              "sql-cluster"
 	asRequirement:       "database"
+	envPrefix:           "PG"
+	envOverrides: {PGPORT: "6432"}
+	params: {
+		database:     "appdb"
+		deployRole:   "app_migrations"
+		deploySecret: "app-db-migrations"
+		maxPool:      20
+		tls:          true
+	}
 	secretRotationEpoch: 1
 	type:                "service-binding"
 	deliveryGuarantee:   "direct"

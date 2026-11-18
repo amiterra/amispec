@@ -14,6 +14,8 @@ import "list"
 	sizeGb:           int
 	committedSizeGb?: int
 	mediaTier:        *"nvme-local" | "ssd-network" | "hdd-bulk" | "ram-tmpfs"
+	// Concrete CSI storage class name (e.g. openebs-lvmpv-data, local-path).
+	class?: string
 }
 
 // Universal binding specification (central or inline)
@@ -25,6 +27,10 @@ import "list"
 	asRequirement?: string
 	envPrefix?:     string
 	envOverrides?: [string]: string
+	// GR-OPR-005: consumption parameters (database name, role/secret names) —
+	// declared at the binding so N consumers of one slot can each bring their
+	// own names (no instance-level magic).
+	params?: [string]: string | int | bool
 	secretRotationEpoch?:     int & >=1 | *1
 	type?:                    *"service-binding" | "live-migration-replica" | "oidc-protection"
 	deliveryGuarantee?:       *"direct" | "transactional-outbox"
@@ -197,6 +203,17 @@ import "list"
 			resources: {
 				cpuCores: number & >0
 				memoryMb: int & >=64
+				// Explicit request/limit envelope (Burstable workloads).
+				// Omitted → compiler default: requests = cpuCores/memoryMb,
+				// memory limit = memoryMb, no cpu limit.
+				requests?: {
+					cpuCores?: number & >0
+					memoryMb?: int & >=1
+				}
+				limits?: {
+					cpuCores?: number & >0
+					memoryMb?: int & >=1
+				}
 			}
 
 			storage?: #VolumeTopologyOverride

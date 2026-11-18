@@ -42,6 +42,7 @@ import "strings"
 	failureThreshold:    int | *3
 	periodSeconds:       int | *10
 	timeoutSeconds:      int | *3
+	initialDelaySeconds?: int & >=0
 }
 
 // Allowed Linux/CSI mount flags (closed set; typos fail at validation).
@@ -181,19 +182,44 @@ import "strings"
 		}
 
 		container?: {
+			// Container name inside the pod (default `app`).
+			name?:        string
 			image: string
 			// GR-IMG-001: every image is a canonical ref + mandatory digest
 			// (multi-arch index digest; label-safe pin budget is GR-PIN-002).
 			imageDigest:            =~#"^sha256:[a-f0-9]{64}$"#
 			pullSecretRequired:     bool | *false
 			readOnlyRootFilesystem: bool | *true
+			// Pod-level fields (runAs*/fsGroup/seccompProfile) materialize in
+			// `pod.spec.securityContext`; container-level fields
+			// (allowPrivilegeEscalation/capabilitiesDrop) in the container's.
 			securityContext?: {
-				runAsNonRoot: bool | *true
-				runAsUser:    int | *10001
-				fsGroup:      int | *10001
+				runAsNonRoot:             bool | *true
+				runAsUser:                int | *10001
+				runAsGroup?:              int
+				fsGroup:                  int | *10001
+				seccompProfile?:          "RuntimeDefault" | "Unconfined" | "Localhost"
+				allowPrivilegeEscalation?: bool
+				capabilitiesDrop?: [...string]
 			}
 			command?: [...string]
 			args?: [...string]
+			// Static/derived container env (fieldRef, secretKeyRef, literals).
+			// Secret VALUES never appear — only Secret names (ADR-0009).
+			env?: [...{
+				name: string
+				value?: string
+				valueFrom?: {
+					fieldRef?: {fieldPath: string}
+					secretKeyRef?: {name: string, key: string}
+				}
+			}]
+			// Container ports (contract endpoints declare the EXPOSED subset;
+			// this list is the full container port inventory).
+			ports?: [...{
+				name:          string
+				containerPort: int & >=1 & <=65535
+			}]
 			zeroEndpoints: bool | *false
 		}
 
@@ -239,7 +265,11 @@ import "strings"
 			operatorVersion:   string
 			crdApiVersion:     string
 			crdKind:           string
-			manifestTemplate:  string
+			// GR-OPR-006: the adapter pack that supplies this operator and maps
+			// the CR (`<publisher>/<id>@rev<N>`). Explicit passport↔adapter link.
+			adapter:           string & =~#"^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?/[a-z0-9]([a-z0-9-]{0,36}[a-z0-9])?@rev[1-9][0-9]*$"#
+			// Legacy inline CR template; superseded by the adapter pack.
+			manifestTemplate?: string
 		}
 
 		configFormulas?: [ParamName=string]: {
@@ -250,11 +280,18 @@ import "strings"
 			description: string
 		}
 
+		// Workload config mounts. `name` is the pod volume name; the source is
+		// a script ConfigMap (`fromSecret: false`, named `<component>-<name>`)
+		// or a Secret (`fromSecret: true`, name = `source`, `$params.<k>` token).
 		configMounts?: [...{
 			name:           string
 			mountPath:      string
 			subPath?:       string
 			fromSecret:     bool | *true
+			source?:        string
+			items?: [...{key: string, path?: string}]
+			readOnly?:      bool | *true
+			defaultMode?:   int
 			reloadStrategy: *"pod-restart" | "hot-inotify" | "sighup"
 		}]
 	}
@@ -304,8 +341,8 @@ import "strings"
 			}
 
 			clientContract?: {
-				injectWhenModes: [...string]
-				sidecar: {
+				injectWhenModes?: [...string]
+				sidecar?: {
 					name:                   string
 					image:                  string
 					injectionTarget:        *"k8s-native-init-restart-always" | "standard-container"
@@ -326,7 +363,10 @@ import "strings"
 					preStopDrainDelaySec:   int | *5
 					configTemplate:         string
 				}
-				exportedTokens: [TokenName=string]: string
+				// Non-secret export surface (hostnames, buckets, regions).
+				// Values: literals or `$params.<key>` (the provider's own
+				// parameters). Materialized as ConfigMap `<component>-endpoint`.
+				exportedTokens?: [TokenName=string]: string
 			}
 
 			provisioner?: {
@@ -351,7 +391,12 @@ import "strings"
 			// GR-VER-003: comparators `= != > >= < <=` AND-ed by spaces; `*` = any.
 			version?:          string & =~#"^\s*(\*|([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?)(\s+([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?))*)\s*$"#
 			mountAsFilesPath?: string
-			envMapping: [EnvVar=string]: string
+			// Consumer env for processes using this slot. A flat string applies
+			// to every using process; a per-process map scopes the value to the
+			// named process (deploy vs runtime traffic may need different
+			// endpoints/credentials — e.g. `$names.rw` for migrations vs
+			// `$names.pooler` for runtime).
+			envMapping: [EnvVar=string]: string | {[ProcessName=string]: string}
 		}
 	}
 

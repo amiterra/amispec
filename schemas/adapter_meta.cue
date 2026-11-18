@@ -41,4 +41,37 @@ package amispec
 		form: "declarative" | "wasm" | "in-tree"
 		tier: "official" | "partner" | "community"
 	}
+
+	// The adapter is the SUPPLIER of the operator (and the mapper of its CR):
+	// install artifacts land in stage 02 (deduplicated per operator), CR
+	// instances in stage 03.
+	operator?: {
+		supplies?: {
+			name: string
+			install: #InstallSpec
+		}
+		requires?: [...{
+			name:       string
+			version:    string & =~#"^\s*(\*|([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?)(\s+([<>!=]{1,2}\s*v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?))*)\s*$"#
+			features?: [...string]
+			install: #InstallSpec
+		}]
+	}
+}
+
+// Install artifacts of an operator: pinned vendored manifests (air-gap safe)
+// or a chart reference.
+#InstallSpec: {
+	form: "manifest" | "chart"
+	if form == "manifest" {
+		files: [...{
+			path:   string & =~#"^[A-Za-z0-9_./-]+$"#
+			sha256: =~"^[a-f0-9]{64}$"
+		}] & [_, ...]
+	}
+	if form == "chart" {
+		chart:    string
+		version:  string
+		repo?:    string
+	}
 }

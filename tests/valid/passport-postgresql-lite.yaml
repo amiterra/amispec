@@ -51,6 +51,7 @@ workload:
     operatorVersion: 0.23.0
     crdApiVersion: postgresql.cnpg.io/v1
     crdKind: Cluster
+    adapter: amiterra/cnpg-cluster@rev2
     manifestTemplate: templates/cnpg-cluster.yaml.j2
   configFormulas:
     shared_buffers:
